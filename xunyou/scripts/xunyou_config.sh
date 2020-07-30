@@ -284,6 +284,9 @@ xunyou_acc_stop()
     devPid=$(echo -n `ps | grep -v grep | grep -w ${DevTypeProc} | awk -F ' ' '{print $1}'`)
     [ -n "${proxyPid}" ] && kill -9 ${devPid}
     #
+    devPid=$(echo -n `ps | grep -v grep | grep -w ${DevTypeProc} | awk -F ' ' '{print $1}'`)
+    [ -n "${proxyPid}" ] && killall ${DevTypeProc}
+    #
     xunyou_clear_rule
 }
 
@@ -364,19 +367,17 @@ xunyou_acc_check()
         ${BasePath}/bin/${DevTypeProc} &
     fi
     #
-    [ -z "${devPid}" ] && xunyou_post_log "xy-devInfo"
+    [ -z "${devPid}" ] && xunyou_post_log "xy-devInfo" && log "[check] 重启 xy-devInfo 进程！"
     #
     [[ -n "${ctrlPid}" && -n "${proxyPid}" ]] && return 0
     #
-    [ -z "${ctrlPid}" ] && xunyou_post_log "xy-ctrl"
-    [ -z "${proxyPid}" ] && xunyou_post_log "xy-proxy"
+    [ -z "${ctrlPid}" ] && xunyou_post_log "xy-ctrl" && log "[check] 重启 xy-ctrl 进程！"
+    [ -z "${proxyPid}" ] && xunyou_post_log "xy-proxy" && log "[check] 重启 xy-proxy 进程！"
     #
     xunyou_acc_stop
     xunyou_acc_start
     #
-    log "[check] 重启进程！"
 }
-
 
 case $1 in
     install)

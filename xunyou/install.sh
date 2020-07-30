@@ -44,7 +44,8 @@ case $(uname -m) in
         ;;
 esac
 
-[[ "${1}" == "app" || "${1}" == "APP" ]] && clientType="1"
+#[[ "${1}" == "app" || "${1}" == "APP" ]] && clientType="1"
+clientType="1"
 
 if [ -d "/koolshare" ];then
     systemType=0
