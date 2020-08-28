@@ -67,8 +67,7 @@ koolshare_install()
     cp -rf /tmp/${MODULE}/*      /koolshare/xunyou/
     cp -rf /tmp/${MODULE}/uninstall.sh  /koolshare/scripts/uninstall_xunyou.sh
     #
-    chmod +x /koolshare/xunyou/bin/*
-    chmod +x /koolshare/xunyou/scripts/*
+    chmod -R 777 /koolshare/xunyou/* 
     #
     ln -sf /koolshare/xunyou/scripts/${MODULE}_config.sh /koolshare/init.d/S90XunYouAcc.sh
     ln -sf /koolshare/xunyou/scripts/${MODULE}_config.sh /koolshare/scripts/xunyou_status.sh
@@ -96,8 +95,7 @@ official_install()
     rm -rf /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
     cp -rf /tmp/${MODULE}/*      /jffs/xunyou/
     #
-    chmod +x /jffs/xunyou/bin/*
-    chmod +x /jffs/xunyou/scripts/*
+    chmod -R 777 /jffs/xunyou/*
     ln -sf /jffs/xunyou/scripts/${MODULE}_config.sh /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
     sh /jffs/xunyou/scripts/${MODULE}_config.sh app
 }

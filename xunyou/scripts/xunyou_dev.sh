@@ -21,7 +21,7 @@ ret=`ip address show ${ifName} 2>/dev/null`
 echo -n > ${outDevPath}
 
 #
-cat /proc/net/arp | grep -v grep | grep "${ifName}" | grep "\<0x2\>" | while read line
+cat /proc/net/arp | grep -v grep | grep "\<${ifName}\>" | grep "\<0x2\>" | while read line
 do
     #
     ip=`echo "${line}" | awk -F ' ' '{print $1}'`
@@ -30,10 +30,10 @@ do
     [[ -z "${ip}" || -z "${mac}" ]] && continue
     #
     #echo "ip=${ip}, mac=${mac}"
-    devName=`cat ${dnsmasqFile} | grep -v grep | grep "${ip}" | awk -F ' '  '{print $4}'`
-    [ -z "${devName}" ] && continue
+    devName=`cat ${dnsmasqFile} | grep -v grep | grep "\<${ip}\>" | awk -F ' '  '{print $4}'`
+    [ -z "${devName}" ] && devName="UNKOWN"
     #
-    ret=`cat ${nfPath} | grep -v grep | grep "${ip}" | wc -l`
+    ret=`cat ${nfPath} | grep -v grep | grep "\<${ip}\>" | wc -l`
     [ ${ret} -eq 0 ] && continue
     #
     echo "${ip} ${mac} ${devName}" >> ${outDevPath}
