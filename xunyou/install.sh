@@ -4,7 +4,7 @@ source /etc/profile
 
 MODULE=xunyou
 title="迅游加速器"
-VERSION="1.0.0.3"
+VERSION="1.0.0.10"
 systemType=0
 clientType="0"
 
