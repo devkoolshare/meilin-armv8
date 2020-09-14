@@ -2,10 +2,10 @@
 
 source /etc/profile
 
-if [ -d "/koolshare" ];then
+if [ -d "/jffs/.koolshare" ];then
     source /koolshare/scripts/base.sh
     eval `dbus export xunyou`
-    xunyouPath="/koolshare"
+    xunyouPath="/jffs/.koolshare"
     #
     [ "${1}" == "app" ] && dbus set xunyou_enable=1 && xunyou_enable="1"
 else
@@ -227,7 +227,7 @@ xunyou_acc_start()
     ulimit -n 2048
     #
     ret=`ps | grep -v grep | grep nvram`
-    [ -n "${ret}" ] && killall nvram
+    [ -n "${ret}" ] && killall nvram >/dev/null 2>&1
     #
     mv ${RouteLog}* /tmp/  >/dev/null 2>&1
     mv ${ProxyLog}* /tmp/  >/dev/null 2>&1
