@@ -2,39 +2,25 @@
 
 source /etc/profile
 
-MODULE=xunyou
-title="迅游加速器"
-VERSION="1.0.0.1"
-module="xunyou_acc"
 systemType=0
-uninstallType="0"
 
 sleep 1
 
 if [ -d "/koolshare" ];then
     systemType=0
-    xunyouPath="/koolshare"
+    BasePath="/koolshare"
 else
     systemType=1
-    xunyouPath="/jffs"
+    BasePath="/jffs"
     [ ! -d "/jffs" ] && exit 1
 fi
 
-[[ -n "${1}" && "${1}" == "update" ]] && uninstallType="1"
-
-
 delete_xunyou_cfg()
 {
-    if [ "${uninstallType}" != "1" ];then
-        rm -rf /jffs/configs/*xunyou*
-        rm -rf /tmp/xunyou-*
-        rm -rf ${xunyouPath}/configs/xunyou-*
-    fi
-    #
+    rm -rf ${BasePath}/configs/xunyou-*
     rm -rf /var/log/xunyou-*
     rm -rf /jffs/configs/dnsmasq.d/xunyou.conf
     rm -rf /tmp/xunyou_uninstall.sh
-    #
 }
 
 koolshare_uninstall()
@@ -42,7 +28,7 @@ koolshare_uninstall()
     eval `dbus export xunyou_`
     source /koolshare/scripts/base.sh
     #
-    sh /koolshare/xunyou/scripts/${MODULE}_config.sh uninstall
+    sh /koolshare/xunyou/scripts/xunyou_config.sh uninstall
     #
     values=`dbus list xunyou_ | cut -d "=" -f 1`
     for value in $values
@@ -56,6 +42,10 @@ koolshare_uninstall()
         dbus remove $value
     done
     #
+    [ -e /koolshare/xunyou/configs/xunyou-user ] && cp -af /koolshare/xunyou/configs/xunyou-user /tmp/
+    [ -e /koolshare/xunyou/configs/xunyou-device ] && cp -af /koolshare/xunyou/configs/xunyou-device /tmp/
+    [ -e /koolshare/xunyou/configs/xunyou-game ] && cp -af /koolshare/xunyou/configs/xunyou-game /tmp/
+
     rm -rf /koolshare/scripts/xunyou_status.sh
     rm -rf /koolshare/init.d/S90XunYouAcc.sh
     rm -rf /koolshare/xunyou
@@ -70,8 +60,12 @@ official_uninstall()
 {
     [ ! -d "/jffs/xunyou" ] && return 1
     #
-    sh /jffs/xunyou/scripts/${MODULE}_config.sh uninstall
+    sh /jffs/xunyou/scripts/xunyou_config.sh uninstall
     #
+    [ -e /jffs/xunyou/configs/xunyou-user ] && cp -af /jffs/xunyou/configs/xunyou-user /tmp/
+    [ -e /jffs/xunyou/configs/xunyou-device ] && cp -af /jffs/xunyou/configs/xunyou-device /tmp/
+    [ -e /jffs/xunyou/configs/xunyou-game ] && cp -af /jffs/xunyou/configs/xunyou-game /tmp/
+
     rm -rf /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
     rm -rf /jffs/xunyou/
     #

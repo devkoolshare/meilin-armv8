@@ -2,48 +2,71 @@
 
 source /etc/profile
 
-if [ -d "/jffs/.koolshare" ];then
+if [ -d "/koolshare" ];then
     source /koolshare/scripts/base.sh
     eval `dbus export xunyou`
-    xunyouPath="/jffs/.koolshare"
+    BasePath="/koolshare"
     #
     [ "${1}" == "app" ] && dbus set xunyou_enable=1 && xunyou_enable="1"
 else
     xunyou_enable="1"
-    xunyouPath="/jffs"
+    BasePath="/jffs"
     [ ! -d "/jffs" ] && exit 1
 fi
 
 module="xunyou_acc"
 ifname="br0"
-BasePath="${xunyouPath}/xunyou"
-RouteCfg="${BasePath}/config/RouteCfg.conf"
-ProxyCfg="${BasePath}/config/ProxyCfg.conf"
-UserInfo="${xunyouPath}/configs/xunyou-user"
+XunyouPath="${BasePath}/xunyou"
+LibPath="${XunyouPath}/lib"
+kernelKoPath="${XunyouPath}/modules"
+
+RouteCfg="${XunyouPath}/configs/RouteCfg.conf"
+ProxyCfg="${XunyouPath}/configs/ProxyCfg.conf"
+DeviceCfg="${XunyouPath}/configs/DeviceCfg.conf"
+IpsetCfg="${XunyouPath}/configs/IpsetCfg.conf"
+UserInfo="${XunyouPath}/configs/xunyou-user"
+GameInfo="${XunyouPath}/configs/xunyou-game"
+DeviceInfo="${XunyouPath}/configs/xunyou-device"
+IpsetEnableCfg="${XunyouPath}/configs/ipset_enable"
+
+logPath="${XunyouPath}/log/xunyou-install.log"
+RouteLog="${XunyouPath}/log/xunyou-ctrl.log"
+ProxyLog="${XunyouPath}/log/xunyou-proxy.log"
+DeviceLog="${XunyouPath}/log/xunyou-device.log"
+IpsetLog="${XunyouPath}/log/xunyou-ipset.log"
+
+ProxyScript="${XunyouPath}/scripts/xunyou_rule.sh"
+UpdateScript="${XunyouPath}/scripts/xunyou_upgrade.sh"
+CfgScript="${XunyouPath}/scripts/xunyou_config.sh"
+DeviceScript="${XunyouPath}/scripts/xunyou_dev.sh"
+
+CtrlProc="xy-ctrl"
+ProxyProc="xy-proxy"
+DeviceProc="xy-device"
+IpsetProc="xy-ipset"
+UdpPostProc="udp-post"
+
 ProxyCfgPort="29595"
 RoutePort="28099"
-RouteLog="/var/log/xunyou-ctrl.log"
-ProxyLog="/var/log/xunyou-proxy.log"
-ProxyScripte="${BasePath}/scripts/xunyou_rule.sh"
-UpdateScripte="${BasePath}/scripts/xunyou_upgrade.sh"
-CfgScripte="${BasePath}/scripts/xunyou_config.sh"
-DevType="${BasePath}/scripts/xunyou_dev.sh"
-LibPath="${BasePath}/lib/"
-RCtrProc="xy-ctrl"
-ProxyProc="xy-proxy"
-DevTypeProc="xy-devInfo"
-UdpPostProc="udp-post"
-logPath="/var/log/xunyou-install.log"
-DnsCfgPath="/jffs/configs/dnsmasq.d"
-DnsConfig="${BasePath}/config/xunyou.conf"
+DevicePort="29090"
+IpsetPort="27890"
+
+DnsmasqCfgFile="/etc/dnsmasq.conf"
 iptName="XUNYOU"
 iptAccName="XUNYOUACC"
 rtName="95"
-kernelKoPath="${BasePath}/modules"
-#
+
 domain="router-lan.xyrouterqpm3v2bi.cc"
 match="|0a|router-lan|10|xyrouterqpm3v2bi|02|cc"
 domainHex="0a726f757465722d6c616e107879726f7574657271706d3376326269026363"
+
+gateway=`ip address show ${ifname} | grep "\<inet\>" | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}'`
+[ -z "${gateway}" ] && exit 1
+
+[ ! -f ${XunyouPath}/version ] && exit 1
+
+VERSION=`cat ${XunyouPath}/version`
+[ -z "${VERSION}" ] && exit 1
 
 log()
 {
@@ -52,9 +75,6 @@ log()
 
 iptables_rule_cfg()
 {
-    gateway=`ip address show ${ifname} | grep "\<inet\>" | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}'`
-    [ -z "${gateway}" ] && return 1
-    #
     ret=`iptables -t mangle -S | grep "\<${iptName}\>"`
     [ -z "${ret}" ] && iptables -t mangle -N ${iptName}
     ret=`iptables -t mangle -S PREROUTING | grep "\<${iptName}\>"`
@@ -110,59 +130,126 @@ iptables_rule_cfg()
 
 set_dnsmasq_config()
 {
-    #
-    ret=`cat /etc/dnsmasq.conf | grep "conf-dir"`
-    if [ -n "${ret}" ];then
-        #
-        ret=`dbus get dhcp_dns1_x`
-        [ -z "${ret}" ] && dbus set dhcp_dns1_x=223.6.6.6
-        #
-        [ -e "${DnsCfgPath}/xunyou.conf"] && return 0
-        #
-        gateway=`ip address show ${ifname} | grep "\<inet\>" | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}'`
-        [ -z "${gateway}" ] && return 1
-        #
-        echo "address=/${domain}/${gateway}" > ${DnsConfig}
-        rm -rf ${DnsCfgPath}/xunyou.conf
-        cp -rf ${DnsConfig} ${DnsCfgPath}/
-    else
-        ret=`cat /etc/hosts | grep "${domain}"`
-        [ -n "${ret}" ] && return 0
-        nvram set lan_hostname="router-lan"
-        nvram set lan_domain="xyrouterqpm3v2bi.cc"
+    if [ -f ${DnsmasqCfgFile} ]; then
+        DnsConfDir=`awk -F "=" '$1=="conf-dir" {print $2}' ${DnsmasqCfgFile}`
+        AddnHostsDir=`awk -F "=" '$1=="addn-hosts" {print $2}' ${DnsmasqCfgFile}`
+
+        if [ -n "${DnsConfDir}" -a -d ${DnsConfDir} ]; then
+            grep "address=/${domain}/${gateway}" ${DnsConfDir}/xunyou.conf >/dev/null 2>&1 && return 0
+            echo "address=/${domain}/${gateway}" > ${DnsConfDir}/xunyou.conf
+            service restart_dnsmasq >/dev/null 2>&1
+            return 0
+        elif [ -n "${AddnHostsDir}" -a -d ${AddnHostsDir} ]; then
+            grep "${gateway} ${domain}" ${AddnHostsDir%*/}/${domain} >/dev/null 2>&1 && return 0
+            echo "${gateway} ${domain}" > ${AddnHostsDir%*/}/${domain}
+            service restart_dnsmasq >/dev/null 2>&1
+            return 0
+        fi
     fi
+
+    ret=`cat /etc/hosts | grep "${domain}"`
+    [ -n "${ret}" ] && return 0
+
+    nvram set lan_hostname="router-lan"
+    nvram set lan_domain="xyrouterqpm3v2bi.cc"
+
     service restart_dnsmasq >/dev/null 2>&1
+}
+
+ipset_check()
+{
+    IpsetEnable="0"
+
+    ipset_cmd=`which ipset`
+    if [ -z "${ipset_cmd}" ]; then
+        if [ -f "/tmp/opt/usr/bin/ipset" ]; then
+            ipset_cmd="/tmp/opt/usr/bin/ipset"
+        else
+            IpsetEnable="1"
+        fi
+    fi
+
+    ${ipset_cmd} -! create test_net hash:net || IpsetEnable="1"
+    ${ipset_cmd} destroy test_net || IpsetEnable="1"
+    ${ipset_cmd} -! create test_netport hash:net,port || IpsetEnable="1"
+    ${ipset_cmd} destroy test_netport || IpsetEnable="1"
+
+    echo -n ${IpsetEnable} > ${IpsetEnableCfg}
 }
 
 create_config_file()
 {
-    gateway=`ip address show ${ifname} | grep "\<inet\>" | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}'`
-    mac=`ip address show ${ifname} | grep link | awk -F ' ' '{print $2}'`
-    [[ -z "${gateway}" || -z "${mac}" ]] && return 1
-    #
-    RouteName=`nvram get odmpid`
-    [ -z "${RouteName}" ] && RouteName=`nvram get productid`
+    IpsetEnable=$1
+    [ -z "${IpsetEnable}" ] && return 1
+
+    product_arch=`uname -m`
+    if [ ! -z ${product_arch} ];then
+        if [ ${product_arch} == "aarch64" ];then
+            product_arch="arm-8"
+        elif [ ${product_arch} == "armv7l"  ];then
+            product_arch="arm-7"
+        fi
+    fi
+
+    #product_version=`nvram get buildno`
+    product_version="384"
+
+    product_id=`nvram get productid`
+    if [ -z ${product_id} ];then
+        product_id=`nvram get odmpid`
+        if [ -z ${product_id} ];then
+            product_id="unknown"
+        fi
+    fi
+
+    if [ ${product_id} =  "RT-AX55" -o ${product_id} =  "RT-AX82U" -o ${product_id} =  "TUF-AX3000" ];then
+        product_arch="arm-8"
+    fi
+
+    str="$product_version"
+    substr=${str%.*}
+    product_version=$substr
+
+    mac=`ip address show ${ifname} | grep link/ether | awk -F ' ' '{print $2}'`
+    [ -z "${mac}" ] && return 1
     #
     flag=`netstat -an | grep ${ProxyCfgPort}`
     [ -n "${flag}" ] && ProxyCfgPort="39595"
     flag=`netstat -an | grep ${RoutePort}`
     [ -n "${flag}" ] && RoutePort="28090"
     #
+    sed -i 's/\("version":"\).*/\1'${VERSION}'",/g' ${RouteCfg}
     sed -i 's/\("httpd-svr":"\).*/\1'${gateway}'",/g' ${RouteCfg}
     sed -i 's/\("route-mac":"\).*/\1'${mac}'",/g'     ${RouteCfg}
     sed -i 's#\("log":"\).*#\1'${RouteLog}'",#g'      ${RouteCfg}
     sed -i 's/\("net-device":"\).*/\1'${ifname}'",/g'              ${RouteCfg}
-    sed -i 's/\("route-name":"\).*/\1'${RouteName}'",/g'           ${RouteCfg}
+    sed -i 's/\("route-name":"\).*/\1'${product_id}'",/g'           ${RouteCfg}
     sed -i 's/\("proxy-manage-port":\).*/\1'${ProxyCfgPort}',/g'   ${RouteCfg}
     sed -i 's/\("local-port":\).*/\1'${RoutePort}',/g'             ${RouteCfg}
-    sed -i 's#\("dev-shell":"\).*#\1'${DevType}'",#g'              ${RouteCfg}
-    sed -i 's#\("upgrade-shell":"\).*#\1'${UpdateScripte}'",#g'    ${RouteCfg}
+    sed -i 's#\("dev-shell":"\).*#\1'${DeviceScript}'",#g'         ${RouteCfg}
+    sed -i 's#\("upgrade-shell":"\).*#\1'${UpdateScript}'",#g'     ${RouteCfg}
     sed -i 's#\("user-info":"\).*#\1'${UserInfo}'",#g'             ${RouteCfg}
+    sed -i 's#\("game-info":"\).*#\1'${GameInfo}'",#g'             ${RouteCfg}
+    sed -i 's#\("ipset-enable":\).*#\1'${IpsetEnable}',#g'         ${RouteCfg}
+    sed -i 's#\("product-arch":"\).*#\1'${product_arch}'",#g'        ${RouteCfg}
+    sed -i 's#\("product-version":"\).*#\1'${product_version}'",#g'  ${RouteCfg}
     #
-    sed -i 's/\("local-ip":"\).*/\1'${gateway}'",/g'        ${ProxyCfg}
-    sed -i 's/\("manage":\).*/\1'${ProxyCfgPort}',/g'       ${ProxyCfg}
-    sed -i 's#\("log":"\).*#\1'${ProxyLog}'",#g'            ${ProxyCfg}
-    sed -i 's#\("script-cfg":"\).*#\1'${ProxyScripte}'",#g' ${ProxyCfg}
+    sed -i 's/\("local-ip":"\).*/\1'${gateway}'",/g'             ${ProxyCfg}
+    sed -i 's/\("manage":\).*/\1'${ProxyCfgPort}',/g'            ${ProxyCfg}
+    sed -i 's#\("log":"\).*#\1'${ProxyLog}'",#g'                 ${ProxyCfg}
+    sed -i 's#\("script-cfg":"\).*#\1'${ProxyScript}'",#g'       ${ProxyCfg}
+    sed -i 's#\("ipset-enable":\).*#\1'${IpsetEnable}',#g'     ${ProxyCfg}
+    #
+    sed -i 's/\("route-mac":"\).*/\1'${mac}'",/g'     ${DeviceCfg}
+    sed -i 's/\("net-device":"\).*/\1'${ifname}'",/g'       ${DeviceCfg}
+    sed -i 's/\("local-ip":"\).*/\1'${gateway}'",/g'        ${DeviceCfg}
+    sed -i 's/\("local-port":\).*/\1'${DevicePort}',/g'      ${DeviceCfg}
+    sed -i 's#\("log":"\).*#\1'${DeviceLog}'",#g'            ${DeviceCfg}
+    sed -i 's#\("device-info":"\).*#\1'${DeviceInfo}'",#g'   ${DeviceCfg}
+    #
+    sed -i 's/\("local-ip":"\).*/\1'${gateway}'",/g'        ${IpsetCfg}
+    sed -i 's/\("local-port":\).*/\1'${IpsetPort}',/g'      ${IpsetCfg}
+    sed -i 's#\("log":"\).*#\1'${IpsetLog}'",#g'            ${IpsetCfg}
 }
 
 rule_init()
@@ -179,14 +266,21 @@ rule_init()
     if [ -z "${flag}" ];then
         ret=`find /lib/modules/ -name "ip_set.ko"`
         [ -n "${ret}" ] && insmod ip_set
-        [ -z "${ret}" ] && [ -d ${kernelKoPath}/${kernel_version}/ ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set.ko
+        [ -z "${ret}" ] && [ -f ${kernelKoPath}/${kernel_version}/kernel/ip_set.ko ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set.ko
     fi
     #
     flag=`lsmod | grep ip_set_hash_netport`
     if [ -z "${flag}" ];then
         ret=`find /lib/modules/ -name "ip_set_hash_netport.ko"`
         [ -n "${ret}" ] && insmod ip_set_hash_netport
-        [ -z "${ret}" ] && [ -d ${kernelKoPath}/${kernel_version}/ ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_netport.ko
+        [ -z "${ret}" ] && [ -f ${kernelKoPath}/${kernel_version}/ip_set_hash_netport.ko ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_netport.ko
+    fi
+    #
+    flag=`lsmod | grep ip_set_hash_net`
+    if [ -z "${flag}" ];then
+        ret=`find /lib/modules/ -name "ip_set_hash_net.ko"`
+        [ -n "${ret}" ] && insmod ip_set_hash_net
+        [ -z "${ret}" ] && [ -f ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_net.ko ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_net.ko
     fi
     #
     flag=`which ipset`
@@ -206,11 +300,14 @@ xunyou_set_time()
 xunyou_set_link()
 {
     [ -e "/tmp/xunyou_uninstall.sh" ] && return 0
-    [ -e "${BasePath}/uninstall.sh" ] && ln -sf ${BasePath}/uninstall.sh /tmp/xunyou_uninstall.sh
+    [ -e "${XunyouPath}/uninstall.sh" ] && ln -sf ${XunyouPath}/uninstall.sh /tmp/xunyou_uninstall.sh
 }
 
 xunyou_acc_start()
 {
+    [ -f ${IpsetEnableCfg} ] || return 1
+    IpsetEnable=`cat ${IpsetEnableCfg}`
+
     xunyou_set_time
     xunyou_set_link
     #
@@ -220,29 +317,36 @@ xunyou_acc_start()
     #
     iptables_rule_cfg
     #
-    create_config_file
+    create_config_file ${IpsetEnable}
     #
-    ret=`export LD_LIBRARY_PATH | grep ${LibPath}`
+    ret=`echo $LD_LIBRARY_PATH | grep ${LibPath}`
     [ -z "${ret}" ] && export LD_LIBRARY_PATH=${LibPath}:$LD_LIBRARY_PATH
     ulimit -n 2048
     #
     ret=`ps | grep -v grep | grep nvram`
     [ -n "${ret}" ] && killall nvram >/dev/null 2>&1
     #
-    mv ${RouteLog}* /tmp/  >/dev/null 2>&1
-    mv ${ProxyLog}* /tmp/  >/dev/null 2>&1
-    #
-    ${BasePath}/bin/${RCtrProc}  --config ${RouteCfg} &
-    ${BasePath}/bin/${ProxyProc} --config ${ProxyCfg} &
-    ${BasePath}/bin/${DevTypeProc} &
+    #ulimit -c unlimited
+    #echo "/tmp/core-%e-%p" > /proc/sys/kernel/core_pattern
+
+    echo 1 > /proc/sys/vm/overcommit_memory
+
+    ${XunyouPath}/bin/${CtrlProc}  --config ${RouteCfg} &
+    ${XunyouPath}/bin/${ProxyProc} --config ${ProxyCfg} &
+    ${XunyouPath}/bin/${DeviceProc} --config ${DeviceCfg} &
+    if [ ${IpsetEnable} == "1" ]; then
+        ${XunyouPath}/bin/${IpsetProc} --config ${IpsetCfg} &
+    fi
 }
 
 xunyou_acc_install()
 {
-    [ ! -d ${xunyouPath}/configs ] && mkdir -p ${xunyouPath}/configs
-    #
+    rule_init
+
+    ipset_check
+
     ret=`cru l | grep "${module}"`
-    [ -z "${ret}" ] && cru a ${module} "*/1 * * * * ${CfgScripte} check"
+    [ -z "${ret}" ] && cru a ${module} "*/1 * * * * ${CfgScript} check"
 }
 
 xunyou_clear_rule()
@@ -277,15 +381,14 @@ xunyou_clear_rule()
 
 xunyou_acc_stop()
 {
-    ctrlPid=$(echo -n `ps | grep -v grep | grep -w ${RCtrProc} | awk -F ' ' '{print $1}'`)
-    [ -n "${ctrlPid}" ] && kill -10 ${ctrlPid}
+    ctrlPid=$(echo -n `ps | grep -v grep | grep -w ${CtrlProc} | awk -F ' ' '{print $1}'`)
+    [ -n "${ctrlPid}" ] && kill -9 ${ctrlPid}
     proxyPid=$(echo -n `ps | grep -v grep | grep -w ${ProxyProc} | awk -F ' ' '{print $1}'`)
     [ -n "${proxyPid}" ] && kill -9 ${proxyPid}
-    devPid=$(echo -n `ps | grep -v grep | grep -w ${DevTypeProc} | awk -F ' ' '{print $1}'`)
-    [ -n "${proxyPid}" ] && kill -9 ${devPid}
-    #
-    devPid=$(echo -n `ps | grep -v grep | grep -w ${DevTypeProc} | awk -F ' ' '{print $1}'`)
-    [ -n "${proxyPid}" ] && killall ${DevTypeProc}
+    devicePid=$(echo -n `ps | grep -v grep | grep -w ${DeviceProc} | awk -F ' ' '{print $1}'`)
+    [ -n "${devicePid}" ] && kill -9 ${devicePid}
+    ipsetPid=$(echo -n `ps | grep -v grep | grep -w ${IpsetProc} | awk -F ' ' '{print $1}'`)
+    [ -n "${ipsetPid}" ] && kill -9 ${ipsetPid}
     #
     xunyou_clear_rule
 }
@@ -298,20 +401,8 @@ xunyou_acc_uninstall()
     ##
     rm -rf ${RouteLog}*
     rm -rf ${ProxyLog}*
-}
-
-xunyou_check_rule()
-{
-    #
-    set_dnsmasq_config
-    #
-    ret=`ps | grep -v grep | grep dnsmasq`
-    [ -z "${ret}" ] && service restart_dnsmasq >/dev/null 2>&1
-    #
-    xunyou_set_time
-    xunyou_set_link
-    #
-    iptables_rule_cfg
+    rm -rf ${DeviceLog}*
+    rm -rf ${IpsetLog}*
 }
 
 get_json_value()
@@ -325,7 +416,7 @@ get_json_value()
 
 xunyou_post_log()
 {
-    [ ! -e "${BasePath}/bin/${UdpPostProc}" ] && return 0
+    [ ! -e "${XunyouPath}/bin/${UdpPostProc}" ] && return 0
     #
     process=${1}
     [ -z "${process}" ] && return 0
@@ -348,31 +439,26 @@ xunyou_post_log()
     data='{"id":1003,"user":"'${userName}'","mac":"'${mac}'","data":{"type":5,"account":"'${userName}'","model":"'${RouteName}'","guid":"","mac":"'${mac}'","crashdll":"'${process}'","reporttime":"'${time}'"}}'
     echo ${data} > ${tmpfile}
     #
-    ${BasePath}/bin/${UdpPostProc} -d "acceldata.xunyou.com" -p 9240 -f ${tmpfile} &
+    ${XunyouPath}/bin/${UdpPostProc} -d "acceldata.xunyou.com" -p 9240 -f ${tmpfile} &
 }
 
 xunyou_acc_check()
 {
     [ "${xunyou_enable}" != "1" ] && return 0
     #
-    xunyou_check_rule
-    #
-    devPid=`ps | grep -v grep | grep -w ${DevTypeProc} | awk -F ' ' '{print $1}'`
-    ctrlPid=`ps | grep -v grep | grep -w ${RCtrProc} | awk -F ' ' '{print $1}'`
+    devicePid=`ps | grep -v grep | grep -w ${DeviceProc} | awk -F ' ' '{print $1}'`
+    ctrlPid=`ps | grep -v grep | grep -w ${CtrlProc} | awk -F ' ' '{print $1}'`
     proxyPid=`ps | grep -v grep | grep -w ${ProxyProc} | awk -F ' ' '{print $1}'`
+    ipsetPid=`ps | grep -v grep | grep -w ${IpsetProc} | awk -F ' ' '{print $1}'`
     #
-    if [[ -z "${devPid}" ]] && [[ -n "${ctrlPid}" && -n "${proxyPid}" ]];then
-        ret=`export LD_LIBRARY_PATH | grep ${LibPath}`
-        [ -z "${ret}" ] && export LD_LIBRARY_PATH=${LibPath}:$LD_LIBRARY_PATH
-        ${BasePath}/bin/${DevTypeProc} &
+    [ -f ${IpsetEnableCfg} ] || xunyou_acc_install
+    IpsetEnable=`cat ${IpsetEnableCfg}`
+    #
+    if [ ${IpsetEnable} == "1" ]; then
+        [[ -n "${ctrlPid}" && -n "${proxyPid}" && -n "${devicePid}" && -n "${ipsetPid}" ]] && return 0
+    else
+        [[ -n "${ctrlPid}" && -n "${proxyPid}" && -n "${devicePid}" ]] && return 0
     fi
-    #
-    [ -z "${devPid}" ] && xunyou_post_log "xy-devInfo" && log "[check] 重启 xy-devInfo 进程！"
-    #
-    [[ -n "${ctrlPid}" && -n "${proxyPid}" ]] && return 0
-    #
-    [ -z "${ctrlPid}" ] && xunyou_post_log "xy-ctrl" && log "[check] 重启 xy-ctrl 进程！"
-    [ -z "${proxyPid}" ] && xunyou_post_log "xy-proxy" && log "[check] 重启 xy-proxy 进程！"
     #
     xunyou_acc_stop
     xunyou_acc_start

@@ -2,18 +2,24 @@
 
 source /etc/profile
 
-MODULE=xunyou
 title="迅游加速器"
-VERSION="1.0.0.11"
 systemType=0
-clientType="0"
 
 remove_install_file(){
-    rm -rf /tmp/${MODULE}*.gz > /dev/null 2>&1
-    rm -rf /tmp/${MODULE} > /dev/null 2>&1
+    rm -rf /tmp/xunyou*.gz > /dev/null 2>&1
+    rm -rf /tmp/xunyou > /dev/null 2>&1
 }
 
 cd /tmp
+
+if [ ! -f /tmp/xunyou/version ]; then
+    echo "version文件不存在，获取插件版本号失败！！！"
+    echo [`date +"%Y-%m-%d %H:%M:%S"`] "退出安装！"
+    remove_install_file
+    exit 1
+fi
+
+VERSION=`cat /tmp/xunyou/version`
 
 case $(uname -m) in
     aarch64)
@@ -44,9 +50,6 @@ case $(uname -m) in
         ;;
 esac
 
-#[[ "${1}" == "app" || "${1}" == "APP" ]] && clientType="1"
-clientType="1"
-
 if [ -d "/koolshare" ];then
     systemType=0
 else
@@ -59,45 +62,48 @@ koolshare_install()
     [ -e "/koolshare/scripts/uninstall_xunyou.sh" ] && sh /koolshare/scripts/uninstall_xunyou.sh
     mkdir -p /koolshare/xunyou
     #
-    dbus set ${MODULE}_enable=0
-    [ "${clientType}" == "1" ] && dbus set ${MODULE}_enable=1
+    dbus set xunyou_enable=1
     #
-    cp -rf /tmp/${MODULE}/webs/* /koolshare/webs/
-    cp -rf /tmp/${MODULE}/res/*  /koolshare/res/
-    cp -rf /tmp/${MODULE}/*      /koolshare/xunyou/
-    cp -rf /tmp/${MODULE}/uninstall.sh  /koolshare/scripts/uninstall_xunyou.sh
+    cp -rf /tmp/xunyou/webs/* /koolshare/webs/
+    cp -rf /tmp/xunyou/res/*  /koolshare/res/
+    cp -arf /tmp/xunyou       /koolshare
+
+    [ -f /koolshare/configs/xunyou-user ] && mv -f /koolshare/configs/xunyou-user /koolshare/xunyou/configs/
+    [ -f /tmp/xunyou-device ] && cp -f /tmp/xunyou-device /koolshare/xunyou/configs/
+    [ -f /tmp/xunyou-user ] && cp -f /tmp/xunyou-user /koolshare/xunyou/configs/
+    [ -f /tmp/xunyou-game ] && cp -f /tmp/xunyou-game /koolshare/xunyou/configs/
+
+    cp -rf /tmp/xunyou/uninstall.sh  /koolshare/scripts/uninstall_xunyou.sh
     #
-    chmod -R 777 /koolshare/xunyou/* 
+    chmod -R 777 /koolshare/xunyou/*
     #
-    ln -sf /koolshare/xunyou/scripts/${MODULE}_config.sh /koolshare/init.d/S90XunYouAcc.sh
-    ln -sf /koolshare/xunyou/scripts/${MODULE}_config.sh /koolshare/scripts/xunyou_status.sh
+    ln -sf /koolshare/xunyou/scripts/xunyou_config.sh /koolshare/init.d/S90XunYouAcc.sh
+    ln -sf /koolshare/xunyou/scripts/xunyou_config.sh /koolshare/scripts/xunyou_status.sh
     #
-    dbus set ${MODULE}_version="${VERSION}"
-    dbus set ${MODULE}_title="${title}"
-    dbus set softcenter_module_${MODULE}_install=1
-    dbus set softcenter_module_${MODULE}_name=${MODULE}
-    dbus set softcenter_module_${MODULE}_version="${VERSION}"
-    dbus set softcenter_module_${MODULE}_title="${title}"
-    dbus set softcenter_module_${MODULE}_description="迅游加速器，支持PC和主机加速。"
+    dbus set xunyou_version="${VERSION}"
+    dbus set xunyou_title="${title}"
+    dbus set softcenter_module_xunyou_install=1
+    dbus set softcenter_module_xunyou_name=xunyou
+    dbus set softcenter_module_xunyou_version="${VERSION}"
+    dbus set softcenter_module_xunyou_title="${title}"
+    dbus set softcenter_module_xunyou_description="迅游加速器，支持PC和主机加速。"
     #
-    [ "${clientType}" == "1" ] &&  sh /koolshare/xunyou/scripts/${MODULE}_config.sh app
+    sh /koolshare/xunyou/scripts/xunyou_config.sh app
 }
 
 official_install()
 {
-    if [ ! -d "/jffs/xunyou" ];then
-        ret=`mkdir -p /jffs/xunyou`
-        [ -n "${ret}" ] && echo [`date +"%Y-%m-%d %H:%M:%S"`] "创建安装路径失败！" && return 1
-    fi
-    #
     [ -e "/jffs/xunyou/uninstall.sh" ] && sh /jffs/xunyou/uninstall.sh
     #
-    rm -rf /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
-    cp -rf /tmp/${MODULE}/*      /jffs/xunyou/
+    cp -arf /tmp/xunyou    /jffs/
+    [ -f /jffs/configs/xunyou-user ] && mv -f /jffs/configs/xunyou-user /jffs/xunyou/configs/
+    [ -f /tmp/xunyou-device ] && cp -f /tmp/xunyou-device /jffs/xunyou/configs/
+    [ -f /tmp/xunyou-user ] && cp -f /tmp/xunyou-user /jffs/xunyou/configs/
+    [ -f /tmp/xunyou-game ] && cp -f /tmp/xunyou-game /jffs/xunyou/configs/
     #
     chmod -R 777 /jffs/xunyou/*
-    ln -sf /jffs/xunyou/scripts/${MODULE}_config.sh /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
-    sh /jffs/xunyou/scripts/${MODULE}_config.sh app
+    ln -sf /jffs/xunyou/scripts/xunyou_config.sh /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
+    sh /jffs/xunyou/scripts/xunyou_config.sh app
 }
 
 case ${systemType} in
