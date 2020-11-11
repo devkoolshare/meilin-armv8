@@ -4,6 +4,7 @@ source /etc/profile
 
 systemType=0
 
+#等待插件回复完消息后再卸载
 sleep 1
 
 if [ -d "/koolshare" ];then

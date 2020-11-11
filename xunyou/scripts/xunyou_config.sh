@@ -91,11 +91,6 @@ iptables_rule_cfg()
         iptables -t nat -I PREROUTING -i ${ifname} -m comment --comment "KOOLPROXY" -j ${iptName}
     fi
     #
-    ret=`iptables -t nat -S "${iptName}" | grep "\-d ${gateway}"`
-    [ -z "${ret}" ] && iptables -t nat -I ${iptName} -d ${gateway} -j ACCEPT
-    ret=`iptables -t mangle -S "${iptName}" | grep "\-d ${gateway}"`
-    [ -z "${ret}" ] && iptables -t mangle -I ${iptName} -d ${gateway} -j ACCEPT
-    #
     ret=`iptables -t nat -S | grep "${iptAccName}"`
     [ -z "${ret}" ] && iptables -t nat -N ${iptAccName}
     ret=`iptables -t mangle -S | grep "${iptAccName}"`
@@ -112,6 +107,11 @@ iptables_rule_cfg()
     #
     ret=`iptables -t mangle -S ${iptName} | grep "${iptAccName}"`
     [ -z "${ret}" ] && iptables -t mangle -A ${iptName} -p udp -j ${iptAccName}
+    #
+    ret=`iptables -t nat -S "${iptName}" | grep "\-d ${gateway}"`
+    [ -z "${ret}" ] && iptables -t nat -A ${iptName} -d ${gateway} -j ACCEPT
+    ret=`iptables -t mangle -S "${iptName}" | grep "\-d ${gateway}"`
+    [ -z "${ret}" ] && iptables -t mangle -A ${iptName} -d ${gateway} -j ACCEPT
     #
     ret=`iptables -t nat -S PREROUTING | sed -n '2p' | grep ${iptName}`
     if [ -z "${ret}" ];then

@@ -96,6 +96,7 @@ official_install()
     [ -e "/jffs/xunyou/uninstall.sh" ] && sh /jffs/xunyou/uninstall.sh
     #
     cp -arf /tmp/xunyou    /jffs/
+
     [ -f /jffs/configs/xunyou-user ] && mv -f /jffs/configs/xunyou-user /jffs/xunyou/configs/
     [ -f /tmp/xunyou-device ] && cp -f /tmp/xunyou-device /jffs/xunyou/configs/
     [ -f /tmp/xunyou-user ] && cp -f /tmp/xunyou-user /jffs/xunyou/configs/
