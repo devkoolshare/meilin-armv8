@@ -77,17 +77,17 @@ iptables_rule_cfg()
 {
     ret=`iptables -t mangle -S | grep "\<${iptName}\>"`
     [ -z "${ret}" ] && iptables -t mangle -N ${iptName}
+
     ret=`iptables -t mangle -S PREROUTING | grep "\<${iptName}\>"`
     if [ -z "${ret}" ];then
-        iptables -t mangle -F ${iptName}
         iptables -t mangle -I PREROUTING -i ${ifname} -p udp -m comment --comment "KOOLPROXY" -j ${iptName}
     fi
     #
     ret=`iptables -t nat -S | grep "\<${iptName}\>"`
     [ -z "${ret}" ] && iptables -t nat -N ${iptName}
+
     ret=`iptables -t nat -S PREROUTING | grep "\<${iptName}\>"`
     if [ -z "${ret}" ];then
-        iptables -t nat -F ${iptName}
         iptables -t nat -I PREROUTING -i ${ifname} -m comment --comment "KOOLPROXY" -j ${iptName}
     fi
     #
@@ -95,41 +95,36 @@ iptables_rule_cfg()
     [ -z "${ret}" ] && iptables -t nat -N ${iptAccName}
     ret=`iptables -t mangle -S | grep "${iptAccName}"`
     [ -z "${ret}" ] && iptables -t mangle -N ${iptAccName}
-    #
-    ret=`iptables -t mangle -S ${iptName} | grep "${domainHex}"`
-    [ -z "${ret}" ] && iptables -t mangle -A ${iptName} -i ${ifname} -p udp --dport 53 -m string --hex-string "${match}" --algo kmp -j ACCEPT
-    #
-    ret=`iptables -t nat -S ${iptName} | grep "${domainHex}"`
-    [ -z "${ret}" ] && iptables -t nat -A ${iptName} -i ${ifname} -p udp --dport 53 -m string --hex-string "${match}" --algo kmp -j DNAT --to-destination ${gateway}
-    #
-    ret=`iptables -t nat -S ${iptName} | grep "${iptAccName}"`
-    [ -z "${ret}" ] && iptables -t nat -A ${iptName} -p tcp -j ${iptAccName}
-    #
-    ret=`iptables -t mangle -S ${iptName} | grep "${iptAccName}"`
-    [ -z "${ret}" ] && iptables -t mangle -A ${iptName} -p udp -j ${iptAccName}
-    #
-    ret=`iptables -t nat -S "${iptName}" | grep "\-d ${gateway}"`
-    [ -z "${ret}" ] && iptables -t nat -A ${iptName} -d ${gateway} -j ACCEPT
-    ret=`iptables -t mangle -S "${iptName}" | grep "\-d ${gateway}"`
-    [ -z "${ret}" ] && iptables -t mangle -A ${iptName} -d ${gateway} -j ACCEPT
-    #
-    ret=`iptables -t nat -S PREROUTING | sed -n '2p' | grep ${iptName}`
-    if [ -z "${ret}" ];then
-        ret=`iptables -t nat -S PREROUTING | grep ${iptName}`
-        [ -n "${ret}" ] && value=`echo ${ret#*A}` && iptables -t nat -D ${value}
-        iptables -t nat -I PREROUTING -i ${ifname} -m comment --comment "KOOLPROXY" -j ${iptName}
-    fi
-    #
-    ret=`iptables -t mangle -S PREROUTING | sed -n '2p' | grep ${iptName}`
-    if [ -z "${ret}" ];then
-        ret=`iptables -t mangle -S PREROUTING | grep ${iptName}`
-        [ -n "${ret}" ] && value=`echo ${ret#*A}` && iptables -t mangle -D ${value}
-        iptables -t mangle -I PREROUTING -i ${ifname} -p udp -m comment --comment "KOOLPROXY" -j ${iptName}
-    fi
+
+    #添加mangle表规则
+    iptables -t mangle -F ${iptName}
+    iptables -t mangle -A ${iptName} -d ${gateway} -j ACCEPT
+    iptables -t mangle -A ${iptName} -i ${ifname} -p udp --dport 53 -m string --hex-string "${match}" --algo kmp -j ACCEPT
+    iptables -t mangle -A ${iptName} -p udp -j ${iptAccName}
+
+    #添加nat表规则
+    iptables -t nat -F ${iptName}
+    iptables -t nat -A ${iptName} -d ${gateway} -j ACCEPT
+    iptables -t nat -A ${iptName} -i ${ifname} -p udp --dport 53 -m string --hex-string "${match}" --algo kmp -j DNAT --to-destination ${gateway}
+    iptables -t nat -A ${iptName} -p tcp -j ${iptAccName}
 }
 
 set_dnsmasq_config()
 {
+    #配置默认的DNS服务器
+    lan_dns=`nvram get dhcp_dns1_x`
+    if [ -z "${lan_dns}" ]; then
+        wan_dns=`nvram get wan_dns | cut -d' ' -f1`
+        if [ -n "${wan_dns}" ]; then
+            nvram set dhcp_dns1_x=${wan_dns}
+        else
+            nvram set dhcp_dns1_x=223.6.6.6
+        fi
+    fi
+
+    #关闭以网关地址作为DNS服务器
+    nvram set dhcpd_dns_router=0
+
     if [ -f ${DnsmasqCfgFile} ]; then
         DnsConfDir=`awk -F "=" '$1=="conf-dir" {print $2}' ${DnsmasqCfgFile}`
         AddnHostsDir=`awk -F "=" '$1=="addn-hosts" {print $2}' ${DnsmasqCfgFile}`
@@ -160,12 +155,14 @@ ipset_check()
 {
     IpsetEnable="0"
 
-    ipset_cmd=`which ipset`
+    ipset_cmd=`type -p ipset`
     if [ -z "${ipset_cmd}" ]; then
-        if [ -f "/tmp/opt/usr/bin/ipset" ]; then
-            ipset_cmd="/tmp/opt/usr/bin/ipset"
+        if [ -f ${kernelKoPath}/${kernel_version}/bin/ipset ]; then
+            ipset_cmd="${kernelKoPath}/${kernel_version}/bin/ipset"
         else
             IpsetEnable="1"
+            echo -n ${IpsetEnable} > ${IpsetEnableCfg}
+            return
         fi
     fi
 
@@ -254,39 +251,46 @@ create_config_file()
 
 rule_init()
 {
-    #
     flag=`lsmod | grep xt_comment`
-    [ -z "${flag}" ] && insmod xt_comment
-    #
+    if [ -z "${flag}" ]; then
+        ko_path=`find /lib/modules/ -name xt_comment.ko`
+        [ -n "${ko_path}" ] && insmod ${ko_path}
+    fi
+
     flag=`lsmod | grep xt_TPROXY`
-    [ -z "${flag}" ] && insmod xt_TPROXY
-    #
+    if [ -z "${flag}" ]; then
+        ko_path=`find /lib/modules/ -name xt_TPROXY.ko`
+        [ -n "${ko_path}" ] && insmod ${ko_path}
+    fi
+
     flag=`lsmod | grep ip_set`
-    kernel_version=`uname -r`
-    if [ -z "${flag}" ];then
-        ret=`find /lib/modules/ -name "ip_set.ko"`
-        [ -n "${ret}" ] && insmod ip_set
-        [ -z "${ret}" ] && [ -f ${kernelKoPath}/${kernel_version}/kernel/ip_set.ko ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set.ko
+    if [ -z "${flag}" ]; then
+        ko_path=`find /lib/modules/ -name ip_set.ko`
+        if [ -n "${ko_path}" ]; then
+            insmod ${ko_path}
+        elif [ -f ${kernelKoPath}/${kernel_version}/kernel/ip_set.ko ]; then
+            insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set.ko
+        fi
     fi
-    #
-    flag=`lsmod | grep ip_set_hash_netport`
-    if [ -z "${flag}" ];then
-        ret=`find /lib/modules/ -name "ip_set_hash_netport.ko"`
-        [ -n "${ret}" ] && insmod ip_set_hash_netport
-        [ -z "${ret}" ] && [ -f ${kernelKoPath}/${kernel_version}/ip_set_hash_netport.ko ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_netport.ko
-    fi
-    #
+
     flag=`lsmod | grep ip_set_hash_net`
-    if [ -z "${flag}" ];then
-        ret=`find /lib/modules/ -name "ip_set_hash_net.ko"`
-        [ -n "${ret}" ] && insmod ip_set_hash_net
-        [ -z "${ret}" ] && [ -f ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_net.ko ] && insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_net.ko
+    if [ -z "${flag}" ]; then
+        ko_path=`find /lib/modules/ -name ip_set_hash_net.ko`
+        if [ -n "${ko_path}" ]; then
+            insmod ${ko_path}
+        elif [ -f ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_net.ko ]; then
+            insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_net.ko
+        fi
     fi
-    #
-    flag=`which ipset`
-    if [ -z "${flag}" ];then
-        mkdir -p /tmp/opt/usr/bin/
-        [ -d ${kernelKoPath}/${kernel_version}/ ] && ln -sf ${kernelKoPath}/${kernel_version}/bin/ipset /tmp/opt/usr/bin/ipset
+
+    flag=`lsmod | grep ip_set_hash_netport`
+    if [ -z "${flag}" ]; then
+        ko_path=`find /lib/modules/ -name ip_set_hash_netport.ko`
+        if [ -n "${ko_path}" ]; then
+            insmod ${ko_path}
+        elif [ -f ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_netport.ko ]; then
+            insmod ${kernelKoPath}/${kernel_version}/kernel/ip_set_hash_netport.ko
+        fi
     fi
 }
 

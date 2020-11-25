@@ -3,6 +3,7 @@
 source /etc/profile
 
 systemType=0
+action=$1
 
 #等待插件回复完消息后再卸载
 sleep 1
@@ -16,6 +17,34 @@ else
     [ ! -d "/jffs" ] && exit 1
 fi
 
+unbind_api="https://router-wan.xunyou.com:9004/v2/core/removeuserrouter"
+
+get_json_value()
+{
+    local json=${1}
+    local key=${2}
+    local num=1
+    local value=$(echo "${json}" | awk -F"[,:}]" '{for(i=1;i<=NF;i++){if($i~/'${key}'\042/){print $(i+1)}}}' | tr -d '"' | sed -n ${num}p)
+    echo ${value}
+}
+
+send_unbind_msg()
+{
+    #远程卸载和升级卸载不需要发送解绑消息
+    if [ "${action}" != "remote" -a "${action}" != "upgrade" ]; then
+        if [ -e ${BasePath}/xunyou/configs/xunyou-user ]; then
+            value=`cat ${BasePath}/xunyou/configs/xunyou-user`
+            key="userId"
+            userId=$(get_json_value $value $key)
+            [ -z "${userId}" ] && return
+
+            data='{"userid":"'${userId}'"}'
+
+            curl -H "Content-Type: application/json" -X POST -d '{"userid":"'${userId}'"}' "${unbind_api}" > /dev/null 2&>1
+        fi
+    fi
+}
+
 delete_xunyou_cfg()
 {
     rm -rf ${BasePath}/configs/xunyou-*
@@ -26,10 +55,12 @@ delete_xunyou_cfg()
 
 koolshare_uninstall()
 {
-    eval `dbus export xunyou_`
-    source /koolshare/scripts/base.sh
+    send_unbind_msg
     #
-    sh /koolshare/xunyou/scripts/xunyou_config.sh uninstall
+    eval `dbus export xunyou_`
+    source ${BasePath}/scripts/base.sh
+    #
+    sh ${BasePath}/xunyou/scripts/xunyou_config.sh uninstall
     #
     values=`dbus list xunyou_ | cut -d "=" -f 1`
     for value in $values
@@ -43,32 +74,32 @@ koolshare_uninstall()
         dbus remove $value
     done
     #
-    [ -e /koolshare/xunyou/configs/xunyou-user ] && cp -af /koolshare/xunyou/configs/xunyou-user /tmp/
-    [ -e /koolshare/xunyou/configs/xunyou-device ] && cp -af /koolshare/xunyou/configs/xunyou-device /tmp/
-    [ -e /koolshare/xunyou/configs/xunyou-game ] && cp -af /koolshare/xunyou/configs/xunyou-game /tmp/
+    [ -e ${BasePath}/xunyou/configs/xunyou-user ] && cp -af ${BasePath}/xunyou/configs/xunyou-user /tmp/
+    [ -e ${BasePath}/xunyou/configs/xunyou-device ] && cp -af ${BasePath}/xunyou/configs/xunyou-device /tmp/
+    [ -e ${BasePath}/xunyou/configs/xunyou-game ] && cp -af ${BasePath}/xunyou/configs/xunyou-game /tmp/
 
-    rm -rf /koolshare/scripts/xunyou_status.sh
-    rm -rf /koolshare/init.d/S90XunYouAcc.sh
-    rm -rf /koolshare/xunyou
-    rm -rf /koolshare/res/icon-xunyou.png
-    rm -rf /koolshare/webs/Module_xunyou.asp
-    rm -rf /koolshare/scripts/uninstall_xunyou.sh
+    rm -rf ${BasePath}/scripts/xunyou_status.sh
+    rm -rf ${BasePath}/init.d/S90XunYouAcc.sh
+    rm -rf ${BasePath}/xunyou
+    rm -rf ${BasePath}/res/icon-xunyou.png
+    rm -rf ${BasePath}/webs/Module_xunyou.asp
+    rm -rf ${BasePath}/scripts/uninstall_xunyou.sh
     #
     delete_xunyou_cfg
 }
 
 official_uninstall()
 {
-    [ ! -d "/jffs/xunyou" ] && return 1
+    send_unbind_msg
     #
-    sh /jffs/xunyou/scripts/xunyou_config.sh uninstall
+    sh ${BasePath}/xunyou/scripts/xunyou_config.sh uninstall
     #
-    [ -e /jffs/xunyou/configs/xunyou-user ] && cp -af /jffs/xunyou/configs/xunyou-user /tmp/
-    [ -e /jffs/xunyou/configs/xunyou-device ] && cp -af /jffs/xunyou/configs/xunyou-device /tmp/
-    [ -e /jffs/xunyou/configs/xunyou-game ] && cp -af /jffs/xunyou/configs/xunyou-game /tmp/
+    [ -e ${BasePath}/xunyou/configs/xunyou-user ] && cp -af ${BasePath}/xunyou/configs/xunyou-user /tmp/
+    [ -e ${BasePath}/xunyou/configs/xunyou-device ] && cp -af ${BasePath}/xunyou/configs/xunyou-device /tmp/
+    [ -e ${BasePath}/xunyou/configs/xunyou-game ] && cp -af ${BasePath}/xunyou/configs/xunyou-game /tmp/
 
     rm -rf /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
-    rm -rf /jffs/xunyou/
+    rm -rf ${BasePath}/xunyou/
     #
     delete_xunyou_cfg
 }

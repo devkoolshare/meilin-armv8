@@ -19,7 +19,7 @@ case $1 in
     6)
         echo "restart the program"
         [ ！ -d "/tmp/xunyou" ] && exit 0
-        sh ${XunyouPath}/uninstall.sh update
+        sh ${XunyouPath}/uninstall.sh upgrade
         sh /tmp/xunyou/install.sh app
         ;;
     *)

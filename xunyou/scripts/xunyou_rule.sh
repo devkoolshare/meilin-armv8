@@ -5,7 +5,6 @@ gateway=${3}
 port=${4}
 device=${5}
 rtName="95"
-iptName="XUNYOU"
 iptAccName="XUNYOUACC"
 
 #
@@ -33,13 +32,11 @@ acc_rule_config()
     local ret=`iptables -t mangle -S | grep ${iptAccName}`
     [ -z "${ret}" ] && iptables -t mangle -N ${iptAccName}
     iptables -t mangle -F ${iptAccName}
-    iptables -t mangle -A ${iptAccName} -d ${gateway} -j ACCEPT
-    
+
     #配置nat表
     ret=`iptables -t nat -S | grep ${iptAccName}`
     [ -z "${ret}" ] && iptables -t nat -N ${iptAccName}
     iptables -t nat -F ${iptAccName}
-    iptables -t nat -A ${iptAccName} -d ${gateway} -j ACCEPT
 
     #
     if [[ -n "${device1}" && "${device1}" != "0.0.0.0" ]]; then
@@ -50,7 +47,7 @@ acc_rule_config()
         [ -z "${ret}" ] && ip rule add from ${device1} fwmark ${markNum} pref 98 t ${rtName}
         #
         iptables -t nat -A ${iptAccName} -s ${device1} -p tcp -j DNAT --to-destination ${gateway}:${port}
-        #iptables -t mangle -A ${iptAccName} -s ${device1} -p tcp -j MARK --set-mark ${markNum}
+
         iptables -t mangle -A ${iptAccName} -s ${device1} -p udp -j TPROXY --tproxy-mark ${markNum} --on-ip 127.0.0.1 --on-port ${port}
     fi
 
@@ -62,7 +59,7 @@ acc_rule_config()
         [ -z "${ret}" ] && ip rule add from ${device2} fwmark ${markNum} pref 99 t ${rtName}
         #
         iptables -t nat -A ${iptAccName} -s ${device2} -p tcp -j DNAT --to-destination ${gateway}:${port}
-        #iptables -t mangle -A ${iptAccName} -s ${device2} -p tcp -j MARK --set-mark ${markNum}
+
         iptables -t mangle -A ${iptAccName} -s ${device2} -p udp -j TPROXY --tproxy-mark ${markNum} --on-ip 127.0.0.1 --on-port ${port}
     fi
 
@@ -72,7 +69,6 @@ acc_rule_config()
 
 del_iptables_rule()
 {
-    #
     ret=`iptables -t mangle -S | grep ${iptAccName}`
     [ -n "${ret}" ] && iptables -t mangle -F ${iptAccName}
     #
