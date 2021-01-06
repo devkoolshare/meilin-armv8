@@ -4,51 +4,214 @@ source /etc/profile
 
 title="迅游加速器"
 systemType=0
+logPath="/tmp/xunyou_install.log"
+isBackup=0
+installCfgUrl=""
+old_version=""
+old_title=""
+
+log()
+{
+    echo [`date +"%Y-%m-%d %H:%M:%S"`] "${1}" >> ${logPath}
+}
 
 remove_install_file(){
     rm -rf /tmp/xunyou*.gz > /dev/null 2>&1
     rm -rf /tmp/xunyou > /dev/null 2>&1
+    rm -rf /tmp/xunyou_bak > /dev/null 2>&1
 }
 
-cd /tmp
+get_json_value()
+{
+    local json=${1}
+    local key=${2}
+    local num=1
+    local value=$(echo "${json}" | awk -F"[,:}]" '{for(i=1;i<=NF;i++){if($i~/'${key}'\042/){print $(i+1)}}}' | tr -d '"' | sed -n ${num}p)
+    echo ${value}
+}
 
-if [ ! -f /tmp/xunyou/version ]; then
-    echo "version文件不存在，获取插件版本号失败！！！"
-    echo [`date +"%Y-%m-%d %H:%M:%S"`] "退出安装！"
-    remove_install_file
-    exit 1
-fi
+get_install_json_url()
+{
+    alias=$(nvram get wps_mfstring)
+    model=$(nvram get productid)
+    version=$(nvram get buildno)
+    log "alias=${alias}, model=${model}, version=${version}"
 
-VERSION=`cat /tmp/xunyou/version`
+    resp_info_json=$(curl -X POST -H "Content-Type: application/json" -d '{"alias":"'"${alias}"'","model":"'"${model}"'","version":"'"${version}"'"}' "https://router.xunyou.com/index.php/vendor/get-info") > /dev/null 2>&1
+    
+    local ret=$?
+    if [ ${ret} -ne 0 ] ;then
+        log "curl get info faild: $ret"
+        return 2
+    fi
+    resp_info_json=`echo ${resp_info_json} | sed "s/https://"`
+    #判断网站返回的info信息是否正确
+    msg_id="id"
+    id_value=$(get_json_value $resp_info_json $msg_id)
+    
+    if [ -z "${id_value}" ];then
+        log "cannot find the msgid"
+        return 3
+    fi
+    if [ ${id_value} -ne 1 ];then
+        log "the msgid is error: $id_value"
+        return 1
+    fi
 
-case $(uname -m) in
-    aarch64)
-        ;;
-    armv7l)
-        kernel=`uname -r`
-        if [ -z "${kernel}" ];then
-            echo [`date +"%Y-%m-%d %H:%M:%S"`] "获取内核版本号失败！！！"
-            echo [`date +"%Y-%m-%d %H:%M:%S"`] "退出安装！"
-            remove_install_file
-            exit 1
+    #获取install.json的下载路径
+    key="url"
+    url_value=$(get_json_value $resp_info_json $key)
+    if [ -z "${url_value}" ];then
+        log "cannet find the install.json's url"
+        return 4
+    fi
+    installCfgUrl="https:"${url_value}
+    installCfgUrl=$(echo ${installCfgUrl} | sed 's/\\//g')
+    
+    return 0
+}
+
+download_install_bin()
+{
+    rm -f /tmp/xunyou/install.json
+    wget --no-check-certificate -O /tmp/xunyou/install.json ${installCfgUrl} > /dev/null 2>&1
+    local ret=$?
+    if [ ${ret} -ne 0 ];then
+        log "wget install config file failed: ${ret}"
+        return 5
+    fi
+    
+    json=$(sed ':a;N;s/\n//g;ta' /tmp/xunyou/install.json)
+    urlString=$(echo $json | awk -F"," '{print $1}' | sed s/\"//g)
+    checksumString=$(echo $json | awk -F"," '{print $2}' | sed s/\"//g)
+
+    installUrl=${urlString#*:}
+    installChecksum=${checksumString#*:}
+
+    wget --no-check-certificate -O /tmp/xunyou/install ${installUrl} > /dev/null 2>&1
+    ret=$?
+    if [ ${ret} -ne 0 ];then
+        log "wget install bin file failed: ${ret}"
+        return 5
+    fi
+    chmod 777 /tmp/xunyou/install
+
+    checksum=$(md5sum /tmp/xunyou/install)
+    ret=$?
+    if [ ${ret} -ne 0 ];then
+        log "execute md5sum failed:${ret}"
+        return 7
+    fi
+    
+    installChecksum=$(echo ${installChecksum} | tr [a-z] [A-Z])
+    checksum=$(echo ${checksum} | awk '{print $1}' | tr [a-z] [A-Z])
+    if [ ${installChecksum} != ${checksum} ]; then
+        log "install file check checksum failed"
+        return 8
+    fi
+    
+    return 0
+}
+
+set_xunyou_bak()
+{
+    if [ ${systemType} -eq 0 ];then
+        if [ -e "/koolshare/xunyou" ];then
+            isBackup=1
+            rm -f /tmp/xunyou_bak.tar.gz
+            cd /koolshare && tar -czvf /tmp/xunyou_bak.tar.gz xunyou > /dev/null 2>&1
+            
+            old_version=`dbus get xunyou_version`
+            old_title=`dbus get xunyou_title`
+            
+            log "backup xunyou success"
         fi
-        #
-        one=`echo ${kernel} | awk -F '.' '{print $1}'`
-        second=`echo ${kernel} | awk -F '.' '{print $2}'`
-        if [[ "${one}" != "4" || "${second}" != "1" ]];then
-            echo [`date +"%Y-%m-%d %H:%M:%S"`] "内核版本号不匹配，你的内核版本：$(uname -r)不能安装！！！"
-            echo [`date +"%Y-%m-%d %H:%M:%S"`] "退出安装！"
-            remove_install_file
-            exit 1
+    elif [ ${systemType} -eq 1 ];then
+        if [ -e "/jffs/xunyou" ];then
+            isBackup=1
+            rm -f /tmp/xunyou_bak.tar.gz
+            cd /jffs && tar -czvf /tmp/xunyou_bak.tar.gz xunyou > /dev/null 2>&1
+            
+            log "backup xunyou success"
         fi
-        ;;
-    *)
-        echo [`date +"%Y-%m-%d %H:%M:%S"`] "本插件适用于【koolshare merlin hnd/axhnd aarch64】固件平台，你的平台：$(uname -m)不能安装！！！"
-        echo [`date +"%Y-%m-%d %H:%M:%S"`] "退出安装！"
-        remove_install_file
-        exit 1
-        ;;
-esac
+    else
+        echo "unknown dev"
+    fi
+}
+
+restore_xunyou_bak()
+{
+    if [ ${isBackup} == 1 ]; then
+        if [ ${systemType} -eq  0 ];then
+            if [ -f "/tmp/xunyou_bak.tar.gz" ];then
+                mkdir -p /tmp/xunyou_bak
+                cd /tmp && tar -zxvf xunyou_bak.tar.gz -C /tmp/xunyou_bak > /dev/null 2>&1
+                #
+                dbus set xunyou_enable=1
+                #
+                cp -rf /tmp/xunyou_bak/xunyou/webs/* /koolshare/webs/
+                cp -rf /tmp/xunyou_bak/xunyou/res/*  /koolshare/res/
+                cp -arf /tmp/xunyou_bak/xunyou       /koolshare
+                #
+                [ -f /koolshare/configs/xunyou-user ] && mv -f /koolshare/configs/xunyou-user /koolshare/xunyou/configs/
+                [ -f /tmp/xunyou-device ] && cp -f /tmp/xunyou-device /koolshare/xunyou/configs/
+                [ -f /tmp/xunyou-user ] && cp -f /tmp/xunyou-user /koolshare/xunyou/configs/
+                [ -f /tmp/xunyou-game ] && cp -f /tmp/xunyou-game /koolshare/xunyou/configs/
+                
+                cp -rf /tmp/xunyou_bak/xunyou/uninstall.sh  /koolshare/scripts/uninstall_xunyou.sh
+                #
+                chmod -R 777 /koolshare/xunyou/*
+                #
+                ln -sf /koolshare/xunyou/scripts/xunyou_config.sh /koolshare/init.d/S90XunYouAcc.sh
+                ln -sf /koolshare/xunyou/scripts/xunyou_config.sh /koolshare/scripts/xunyou_status.sh
+                #
+                dbus set xunyou_version="${old_version}"
+                dbus set xunyou_title="${old_title}"
+                dbus set softcenter_module_xunyou_install=1
+                dbus set softcenter_module_xunyou_name=xunyou
+                dbus set softcenter_module_xunyou_version="${old_version}"
+                dbus set softcenter_module_xunyou_title="${old_title}"
+                dbus set softcenter_module_xunyou_description="迅游加速器，支持PC和主机加速。"
+                #
+                sh /koolshare/xunyou/scripts/xunyou_config.sh app
+            fi
+        elif [ ${systemType} -eq 1 ];then
+            if [ -f "/tmp/xunyou_bak.tar.gz" ];then
+                mkdir -p /tmp/xunyou_bak
+                cd /tmp && tar -zxvf xunyou_bak.tar.gz -C /tmp/xunyou_bak > /dev/null 2>&1
+                cp -arf /tmp/xunyou_bak/xunyou    /jffs/
+
+                [ -f /jffs/configs/xunyou-user ] && mv -f /jffs/configs/xunyou-user /jffs/xunyou/configs/
+                [ -f /tmp/xunyou-device ] && cp -f /tmp/xunyou-device /jffs/xunyou/configs/
+                [ -f /tmp/xunyou-user ] && cp -f /tmp/xunyou-user /jffs/xunyou/configs/
+                [ -f /tmp/xunyou-game ] && cp -f /tmp/xunyou-game /jffs/xunyou/configs/
+                #
+                chmod -R 777 /jffs/xunyou/*
+                ln -sf /jffs/xunyou/scripts/xunyou_config.sh /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
+                sh /jffs/xunyou/scripts/xunyou_config.sh app
+            fi
+        else
+            echo "unknown dev"
+        fi
+        
+        log "restore xunyou success"
+    fi
+}
+
+uninstall_xunyou()
+{
+    if [ ${systemType} -eq  0 ];then
+        [ -e "/koolshare/scripts/uninstall_xunyou.sh" ] && sh /koolshare/scripts/uninstall_xunyou.sh > /dev/null 2>&1
+    elif [ ${systemType} -eq 1 ];then
+        [ -e "/jffs/xunyou/uninstall.sh" ] && sh /jffs/xunyou/uninstall.sh > /dev/null 2>&1
+    else
+        echo "unknown dev"
+    fi
+    
+    log "uninstall xunyou success"
+}
+
+log "安装迅游模块！"
 
 if [ -d "/koolshare" ];then
     systemType=0
@@ -57,69 +220,53 @@ else
     [ ! -d "/jffs" ] && systemType=2
 fi
 
-koolshare_install()
-{
-    [ -e "/koolshare/scripts/uninstall_xunyou.sh" ] && sh /koolshare/scripts/uninstall_xunyou.sh
-    mkdir -p /koolshare/xunyou
-    #
-    dbus set xunyou_enable=1
-    #
-    cp -rf /tmp/xunyou/webs/* /koolshare/webs/
-    cp -rf /tmp/xunyou/res/*  /koolshare/res/
-    cp -arf /tmp/xunyou       /koolshare
+rm -f /tmp/xunyou_install.log
 
-    [ -f /koolshare/configs/xunyou-user ] && mv -f /koolshare/configs/xunyou-user /koolshare/xunyou/configs/
-    [ -f /tmp/xunyou-device ] && cp -f /tmp/xunyou-device /koolshare/xunyou/configs/
-    [ -f /tmp/xunyou-user ] && cp -f /tmp/xunyou-user /koolshare/xunyou/configs/
-    [ -f /tmp/xunyou-game ] && cp -f /tmp/xunyou-game /koolshare/xunyou/configs/
+mkdir -p /tmp/xunyou
+cd /tmp/xunyou
 
-    cp -rf /tmp/xunyou/uninstall.sh  /koolshare/scripts/uninstall_xunyou.sh
-    #
-    chmod -R 777 /koolshare/xunyou/*
-    #
-    ln -sf /koolshare/xunyou/scripts/xunyou_config.sh /koolshare/init.d/S90XunYouAcc.sh
-    ln -sf /koolshare/xunyou/scripts/xunyou_config.sh /koolshare/scripts/xunyou_status.sh
-    #
-    dbus set xunyou_version="${VERSION}"
-    dbus set xunyou_title="${title}"
-    dbus set softcenter_module_xunyou_install=1
-    dbus set softcenter_module_xunyou_name=xunyou
-    dbus set softcenter_module_xunyou_version="${VERSION}"
-    dbus set softcenter_module_xunyou_title="${title}"
-    dbus set softcenter_module_xunyou_description="迅游加速器，支持PC和主机加速。"
-    #
-    sh /koolshare/xunyou/scripts/xunyou_config.sh app
-}
+set_xunyou_bak
 
-official_install()
-{
-    [ -e "/jffs/xunyou/uninstall.sh" ] && sh /jffs/xunyou/uninstall.sh
-    #
-    cp -arf /tmp/xunyou    /jffs/
+get_install_json_url
+ret=$?
+if [ ${ret} -ne  0 ];then
+    restore_xunyou_bak
+    remove_install_file
+    cat ${logPath}
+    exit ${ret}
+fi
 
-    [ -f /jffs/configs/xunyou-user ] && mv -f /jffs/configs/xunyou-user /jffs/xunyou/configs/
-    [ -f /tmp/xunyou-device ] && cp -f /tmp/xunyou-device /jffs/xunyou/configs/
-    [ -f /tmp/xunyou-user ] && cp -f /tmp/xunyou-user /jffs/xunyou/configs/
-    [ -f /tmp/xunyou-game ] && cp -f /tmp/xunyou-game /jffs/xunyou/configs/
-    #
-    chmod -R 777 /jffs/xunyou/*
-    ln -sf /jffs/xunyou/scripts/xunyou_config.sh /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
-    sh /jffs/xunyou/scripts/xunyou_config.sh app
-}
+log "get install config file url success!"
 
-case ${systemType} in
-    0)
-        koolshare_install
-        ;;
-    1)
-        official_install
-        ;;
-    2)
-        ;;
-    *)
-        ;;
-esac
+download_install_bin
+ret=$?
+if [ ${ret} -ne  0 ];then
+    restore_xunyou_bak
+    remove_install_file
+    cat ${logPath}
+    exit ${ret}
+fi
+
+log "[app]: download install bin success."
+
+#执行卸载操作
+uninstall_xunyou upgrade
+
+log "beging to install xunyou"
+
+/tmp/xunyou/install >> ${logPath}
+ret=$?
+if [ ${ret} -ne 0 ];then
+    log "install xunyou faild"
+    restore_xunyou_bak
+    remove_install_file
+    cat ${logPath}
+    exit ${ret}
+fi
+
+log "install success!!!"
 
 remove_install_file
 
+cat ${logPath}
 exit 0
