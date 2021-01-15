@@ -71,7 +71,7 @@ get_install_json_url()
     return 0
 }
 
-download_install_bin()
+download_adaptation_install_bin()
 {
     rm -f /tmp/xunyou/install.json
     wget --no-check-certificate -O /tmp/xunyou/install.json ${installCfgUrl} > /dev/null 2>&1
@@ -88,15 +88,15 @@ download_install_bin()
     installUrl=${urlString#*:}
     installChecksum=${checksumString#*:}
 
-    wget --no-check-certificate -O /tmp/xunyou/install ${installUrl} > /dev/null 2>&1
+    wget --no-check-certificate -O /tmp/xunyou/adaptation_install ${installUrl} > /dev/null 2>&1
     ret=$?
     if [ ${ret} -ne 0 ];then
-        log "wget install bin file failed: ${ret}"
+        log "wget adaptation_install bin file failed: ${ret}"
         return 5
     fi
-    chmod 777 /tmp/xunyou/install
+    chmod 777 /tmp/xunyou/adaptation_install
 
-    checksum=$(md5sum /tmp/xunyou/install)
+    checksum=$(md5sum /tmp/xunyou/adaptation_install)
     ret=$?
     if [ ${ret} -ne 0 ];then
         log "execute md5sum failed:${ret}"
@@ -106,7 +106,7 @@ download_install_bin()
     installChecksum=$(echo ${installChecksum} | tr [a-z] [A-Z])
     checksum=$(echo ${checksum} | awk '{print $1}' | tr [a-z] [A-Z])
     if [ ${installChecksum} != ${checksum} ]; then
-        log "install file check checksum failed"
+        log "adaptation_install file check checksum failed"
         return 8
     fi
     
@@ -201,9 +201,9 @@ restore_xunyou_bak()
 uninstall_xunyou()
 {
     if [ ${systemType} -eq  0 ];then
-        [ -e "/koolshare/scripts/uninstall_xunyou.sh" ] && sh /koolshare/scripts/uninstall_xunyou.sh > /dev/null 2>&1
+        [ -e "/koolshare/scripts/uninstall_xunyou.sh" ] && sh /koolshare/scripts/uninstall_xunyou.sh upgrade > /dev/null 2>&1
     elif [ ${systemType} -eq 1 ];then
-        [ -e "/jffs/xunyou/uninstall.sh" ] && sh /jffs/xunyou/uninstall.sh > /dev/null 2>&1
+        [ -e "/jffs/xunyou/uninstall.sh" ] && sh /jffs/xunyou/uninstall.sh upgrade > /dev/null 2>&1
     else
         echo "unknown dev"
     fi
@@ -238,7 +238,7 @@ fi
 
 log "get install config file url success!"
 
-download_install_bin
+download_adaptation_install_bin
 ret=$?
 if [ ${ret} -ne  0 ];then
     restore_xunyou_bak
@@ -247,26 +247,27 @@ if [ ${ret} -ne  0 ];then
     exit ${ret}
 fi
 
-log "[app]: download install bin success."
+log "[app]: download adaptation_install bin success."
 
 #执行卸载操作
-uninstall_xunyou upgrade
+uninstall_xunyou
 
-log "beging to install xunyou"
+log "beging to adaptation_install xunyou"
 
-/tmp/xunyou/install >> ${logPath}
+/tmp/xunyou/adaptation_install >> ${logPath}
 ret=$?
 if [ ${ret} -ne 0 ];then
-    log "install xunyou faild"
+    log "adaptation_install xunyou faild"
     restore_xunyou_bak
     remove_install_file
     cat ${logPath}
     exit ${ret}
 fi
 
-log "install success!!!"
+log "adaptation_install success!!!"
 
 remove_install_file
 
 cat ${logPath}
 exit 0
+
