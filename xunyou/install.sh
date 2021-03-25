@@ -1,5 +1,5 @@
 #!/bin/sh
-
+#version：1.0.4.0
 source /etc/profile
 
 title="迅游加速器"
