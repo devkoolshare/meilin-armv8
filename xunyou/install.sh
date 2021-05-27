@@ -1,5 +1,4 @@
 #!/bin/sh
-#1.0.5.4
 
 source /etc/profile
 
@@ -10,6 +9,19 @@ isBackup=0
 installCfgUrl=""
 old_version=""
 old_title=""
+action=$1
+ifname="br0"
+UdpPostProc="udp-post"
+product_model=`nvram get productid`
+
+if [ -d "/koolshare" ];then
+    systemType=0
+    BasePath="/koolshare"
+else
+    systemType=1
+    BasePath="/jffs"
+    [ ! -d "/jffs" ] && exit 1
+fi
 
 log()
 {
@@ -31,6 +43,43 @@ get_json_value()
     echo ${value}
 }
 
+xunyou_post_install_log()
+{
+    [ ! -e "${BasePath}/xunyou/bin/${UdpPostProc}" ] && return 0
+    #
+    tmpfile="/tmp/.xy-post.log"
+    value=`cat ${BasePath}/xunyou/configs/xunyou-user` >/dev/null 2>&1
+    key="userName"
+    userName=$(get_json_value $value $key)
+    #
+    mac=`ip address show ${ifname} | grep link/ether | awk -F ' ' '{print $2}'`
+    [ -z "${mac}" ] && return 0
+    #
+    time=`date +"%Y-%m-%d %H:%M:%S"`
+    #
+    guid=`echo -n ''${mac}'merlinrouterxunyou2020!@#$' | md5sum | awk -F ' ' '{print $1}'`
+    #
+    publicIp_json=$(curl https://router.xunyou.com/index.php/Info/getClientIp) >/dev/null 2>&1
+    key="ip"
+    publicIp=$(get_json_value $publicIp_json $key)
+    #
+    if [ "$1" == "faild" ]; then
+        success=0
+    else
+        success=1
+    fi
+    #
+    if [ "${action}" == "upgrade" ]; then
+        type=7
+    else
+        type=3
+    fi
+    data='{"id":1003,"user":"'${userName}'","mac":"'${mac}'","data":{"type":"'${type}'","account":"'${userName}'","model":"'${product_model}'","guid":"'${guid}'","mac":"'${mac}'","publicIp":"'${publicIp}'","source":0, "success":"'${success}'","reporttime":"'${time}'"}}'
+    echo ${data} > ${tmpfile}
+    #
+    ${BasePath}/xunyou/bin/${UdpPostProc} -d "acceldata.xunyou.com" -p 9240 -f ${tmpfile} >/dev/null 2>&1 &
+}
+
 get_install_json_url()
 {
     alias=$(nvram get wps_mfstring)
@@ -38,7 +87,7 @@ get_install_json_url()
     version=$(nvram get buildno)
     log "alias=${alias}, model=${model}, version=${version}"
 
-    resp_info_json=$(curl -X POST -H "Content-Type: application/json" -d '{"alias":"'"${alias}"'","model":"'"${model}"'","version":"'"${version}"'"}' "https://router.xunyou.com/index.php/vendor/get-info") > /dev/null 2>&1
+    resp_info_json=$(curl -k -X POST -H "Content-Type: application/json" -d '{"alias":"'"${alias}"'","model":"'"${model}"'","version":"'"${version}"'"}' "https://router.xunyou.com/index.php/vendor/get-info") > /dev/null 2>&1
     
     local ret=$?
     if [ ${ret} -ne 0 ] ;then
@@ -214,13 +263,6 @@ uninstall_xunyou()
 
 log "安装迅游模块！"
 
-if [ -d "/koolshare" ];then
-    systemType=0
-else
-    systemType=1
-    [ ! -d "/jffs" ] && systemType=2
-fi
-
 rm -f /tmp/xunyou_install.log
 
 mkdir -p /tmp/xunyou
@@ -234,6 +276,7 @@ if [ ${ret} -ne  0 ];then
     restore_xunyou_bak
     remove_install_file
     cat ${logPath}
+    xunyou_post_install_log faild
     exit ${ret}
 fi
 
@@ -245,6 +288,7 @@ if [ ${ret} -ne  0 ];then
     restore_xunyou_bak
     remove_install_file
     cat ${logPath}
+    xunyou_post_install_log faild
     exit ${ret}
 fi
 
@@ -262,13 +306,14 @@ if [ ${ret} -ne 0 ];then
     restore_xunyou_bak
     remove_install_file
     cat ${logPath}
+    xunyou_post_install_log faild
     exit ${ret}
 fi
 
+xunyou_post_install_log success
 log "adaptation_install success!!!"
 
 remove_install_file
 
 cat ${logPath}
 exit 0
-
