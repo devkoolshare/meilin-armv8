@@ -2,10 +2,11 @@
 
 source /etc/profile
 
-KOOLSHARE="koolshare"
+MERLIN="merlin"
 ASUS="asus"
 NETGEAR="netgear"
 LINKSYS="linksys"
+KOOLSHARE="koolshare"
 
 title="迅游加速器"
 SYSTEM_TYPE=“”
@@ -180,14 +181,14 @@ set_xunyou_bak()
     if [ -e "${BASE_PATH}/xunyou" ]; then
         log "begin to backup xunyou"
 
-        cd ${BASE_PATH}
+        cd ${BASE_PATH}/
         tar -czvf ${BACKUP_TAR} xunyou > /dev/null 2>&1
         if [ $? -ne 0 ]; then
             log "backup xunyou failed!"
             return 17
         fi
 
-        if [ ${SYSTEM_TYPE} == ${KOOLSHARE} ];then
+        if [ ${SYSTEM_TYPE} == ${MERLIN} ];then
             OLD_VERSION=`dbus get xunyou_version`
             OLD_TITLE=`dbus get xunyou_title`
         fi
@@ -214,7 +215,7 @@ restore_xunyou_bak()
 
     tar -zxvf ${BACKUP_TAR} -C ${BASE_PATH} > /dev/null 2>&1
 
-    if [ ${SYSTEM_TYPE} == ${KOOLSHARE} ];then
+    if [ ${SYSTEM_TYPE} == ${MERLIN} ];then
         dbus set xunyou_enable=1
 
         cp -rf ${BASE_PATH}/xunyou/webs/* ${BASE_PATH}/webs/
@@ -245,7 +246,7 @@ restore_xunyou_bak()
 check_system()
 {
     if [ -d "/koolshare" ]; then
-        SYSTEM_TYPE="koolshare"
+        SYSTEM_TYPE="merlin"
         BASE_PATH="/koolshare"
         IF_NAME="br0"
         VENDOR=$(nvram get wps_mfstring)
@@ -272,6 +273,13 @@ check_system()
         VENDOR="NETGEAR"
         MODEL=$(cat /module_name)
         VERSION=$(cat /firmware_version)
+    elif [ -f "/etc/openwrt_version" ]; then
+        SYSTEM_TYPE="koolshare"
+        BASE_PATH=""
+        IF_NAME="eth1"
+        VENDOR="KOOLSHARE"
+        MODEL="ARS2"
+        VERSION=$(cat /etc/openwrt_version)
     else
         log "unknown system type, now exit the installation!"
         return 16
