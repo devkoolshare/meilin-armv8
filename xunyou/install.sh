@@ -388,6 +388,7 @@ download_plugin()
 
                 kernel=""
                 kernel_md5=""
+                kernel_url=""
             fi
         fi
     done < ${INSTALL_JSON}
