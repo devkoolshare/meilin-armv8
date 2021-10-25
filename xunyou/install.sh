@@ -1,201 +1,493 @@
 #!/bin/sh
 
-source /etc/profile
+ACTION=$1
 
-MERLIN="merlin"
-ASUS="asus"
-NETGEAR="netgear"
-LINKSYS="linksys"
-KOOLSHARE="koolshare"
-
-title="迅游加速器"
-SYSTEM_TYPE=“”
+SYSTEM_TYPE=""
+PLUGIN_DIR=""
 IF_NAME=""
 VENDOR=""
 MODEL=""
 VERSION=""
-BASE_PATH=""
+PLUGIN_VERSION=""
+IF_MAC=""
+PLUGIN_MOUNT_DIR=“”
+PLUGIN_CONF=""
+USER_NAME=""
 
-logPath="/tmp/xunyou_install.log"
+WORK_DIR="/tmp/xunyou"
+INSTALL_DIR="/tmp/.xunyou_install"
+BACKUP_DIR="${INSTALL_DIR}/bak"
+DOWNLOAD_DIR="${INSTALL_DIR}/download"
+
+PLUGIN_CONF="${WORK_DIR}/conf/plugin.conf"
+INSTALL_JSON="${INSTALL_DIR}/install.json"
+CORE_TAR="${DOWNLOAD_DIR}/xunyou.tar.gz"
+KO_TAR="${DOWNLOAD_DIR}/ko.tar.gz"
 
 OLD_VERSION=""
 OLD_TITLE=""
-action=$1
 
-CTRL_PROC="xy-ctrl"
-PROXY_PROC="xy-proxy"
-UDP_POST_PROC="udp-post"
-
-BACKUP_TAR="/tmp/xunyou/xunyou_bak.tar.gz"
-INSTALL_CONFIG_URL=""
-INSTALL_CONFIG="/tmp/xunyou/install.json"
-INSTALL_BIN="/tmp/xunyou/adaptation_install"
+CTRL_PROC="xunyou_ctrl"
+PROXY_PROC="xunyou_proxy"
+IPSET_PROC="xunyou_ipset"
+POST_PROC="xunyou_post"
 
 XUNYOU_CHAIN="XUNYOU"
-XUNYOUACC_CHAIN="XUNYOUACC"
+XUNYOU_ACC_CHAIN="XUNYOU_ACC"
 
-log()
-{
-    echo "${1}"
-    echo [`date +"%Y-%m-%d %H:%M:%S"`] "${1}" >> ${logPath}
-}
-
-remove_install_file(){
-    rm -rf /tmp/xunyou > /dev/null 2>&1
-}
+INSTALL_LOG="/tmp/.xunyou_install.log"
 
 get_json_value()
 {
     local json=${1}
     local key=${2}
-    local num=1
-    local value=$(echo "${json}" | awk -F"[,:}]" '{for(i=1;i<=NF;i++){if($i~/'${key}'\042/){print $(i+1)}}}' | tr -d '"' | sed -n ${num}p)
+    local line=`echo ${json} | tr -d "\n " | awk -F"[][}{,]" '{for(i=1;i<=NF;i++) {if($i~/^"'${key}'":/) print $i}}' | tr -d '"' | sed -n 1p`
+    local value=${line#*:}
     echo ${value}
 }
 
-xunyou_post_install_log()
+log()
 {
-    [ ! -e "${BASE_PATH}/xunyou/bin/${UDP_POST_PROC}" ] && return 0
-    #
-    tmpfile="/tmp/.xy-post.log"
-    value=`cat ${BASE_PATH}/xunyou/configs/xunyou-user` >/dev/null 2>&1
-    key="userName"
-    userName=$(get_json_value $value $key)
-    #
-    mac=`ip address show ${IF_NAME} | grep link/ether | awk -F ' ' '{print $2}'`
-    [ -z "${mac}" ] && return 0
-    #
-    time=`date +"%Y-%m-%d %H:%M:%S"`
-    #
-    guid=`echo -n ''${mac}'merlinrouterxunyou2020!@#$' | md5sum | awk -F ' ' '{print $1}'`
-    #
-    publicIp_json=$(curl https://router.xunyou.com/index.php/Info/getClientIp) >/dev/null 2>&1
-    key="ip"
-    publicIp=$(get_json_value $publicIp_json $key)
-    #
+    echo "${1}"
+    echo [`date +"%Y-%m-%d %H:%M:%S"`] "${1}" >> ${INSTALL_LOG}
+}
+
+post_log()
+{
+    [ ! -e "${WORK_DIR}/xunyou/bin/${POST_PROC}" ] && return 0
+
+    local tmp_file="/tmp/.xy-post.log"
+    local time=`date +"%Y-%m-%d %H:%M:%S"`
+    local guid=`echo -n ''${IF_MAC}'merlinrouterxunyou2020!@#$' | md5sum | awk -F ' ' '{print $1}'`
+    local public_ip
+    local json
+    local key
+
+    json=`curl -s http://router.xunyou.com/index.php/Info/getClientIp` >/dev/null 2>&1
+    if [ -n "${json}" ]; then
+        key="ip"
+        public_ip=`get_json_value "${json}" "${key}"`
+    fi
+
+    local success
     if [ "$1" == "failed" ]; then
         success=0
     else
         success=1
     fi
-    #
-    if [ "${action}" == "upgrade" ]; then
+
+    local type
+    if [ "${ACTION}" == "upgrade" ]; then
         type=7
     else
         type=3
     fi
-    data='{"id":1003,"user":"'${userName}'","mac":"'${mac}'","data":{"type":"'${type}'","account":"'${userName}'","model":"'${MODEL}'","guid":"'${guid}'","mac":"'${mac}'","publicIp":"'${publicIp}'","source":0, "success":"'${success}'","reporttime":"'${time}'"}}'
-    echo ${data} > ${tmpfile}
-    #
-    ${BASE_PATH}/xunyou/bin/${UDP_POST_PROC} -d "acceldata.xunyou.com" -p 9240 -f ${tmpfile} >/dev/null 2>&1 &
+
+    local data='{"id":1003,"user":"${USER_NAME}","mac":"'${IF_MAC}'","data":{"type":"'${type}'","account":"${USER_NAME}","model":"'${MODEL}'","guid":"'${guid}'","mac":"'${IF_MAC}'","publicIp":"'${public_ip}'","source":0, "success":"'${success}'","reporttime":"'${time}'"}}'
+
+    echo ${data} > ${tmp_file}
+
+    ${WORK_DIR}/bin/${POST_PROC} -d "acceldata.xunyou.com" -p 9240 -f ${tmp_file} >/dev/null 2>&1
+
+    rm -f ${tmp_file}
 }
 
-get_install_config_url()
+download()
 {
-    log "VENDOR=${VENDOR}, model=${MODEL}, version=${VERSION}"
+    local url="$1"
+    local file="$2"
+    local md5="$3"
 
-    resp_info_json=$(curl -k -X POST -H "Content-Type: application/json" -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' "https://router.xunyou.com/index.php/vendor/get-info") > /dev/null 2>&1
+    curl -L -s -k "$url" -o "${file}" >/dev/null 2>&1 || \
+        wget -q --no-check-certificate "$url" -O "${file}" >/dev/null 2>&1 || \
+        curl -s -k "$url" -o "${file}" >/dev/null 2>&1
+
+    if [ $? -ne 0 ]; then
+        log "Failed: curl (-L) -s -k ${url} -o ${file} ||
+            wget -q --no-check-certificate $url -O ${file}!"
+        return 5
+    fi
+
+    if [ -n "$md5" ]; then
+        local download_md5=`md5sum ${file}`
+        if [ $? -ne 0 ]; then
+            log "Execute md5sum failed!"
+            return 7
+        fi
+
+        download_md5=`echo ${download_md5} | awk '{print $1}' | tr [a-z] [A-Z]`
+
+        if [ "$download_md5" != "$md5" ]; then
+            log "The checksum of ${file} does not match!"
+            return 8
+        fi
+    fi
+
+    return 0
+}
+
+install_init()
+{
+    rm -f ${INSTALL_LOG}
+
+    log "Begin to install plugin."
+
+    mkdir -p ${INSTALL_DIR}
+    mkdir -p ${DOWNLOAD_DIR}
+
+    if [ -d "/koolshare" ]; then
+        SYSTEM_TYPE="merlin"
+        PLUGIN_DIR="/koolshare/xunyou"
+        PLUGIN_MOUNT_DIR="/jffs"
+        IF_NAME="br0"
+        VENDOR=`nvram get wps_mfstring`
+        MODEL=`nvram get productid`
+        VERSION=`nvram get buildno`
+    elif [ -d "/jffs" ]; then
+        SYSTEM_TYPE="asus"
+        PLUGIN_DIR="/jffs/xunyou"
+        PLUGIN_MOUNT_DIR="/jffs"
+        IF_NAME="br0"
+        VENDOR=`nvram get wps_mfstring`
+        MODEL=`nvram get productid`
+        VERSION=`nvram get buildno`
+    elif [ -d "/var/tmp/misc2" ]; then
+        SYSTEM_TYPE="linksys"
+        PLUGIN_DIR="/var/tmp/misc2/xunyou"
+        PLUGIN_MOUNT_DIR="/var/tmp/misc2"
+        IF_NAME="br0"
+        VENDOR=`nvram kget manufacturer`
+        MODEL=`nvram kget modelNumber`
+        VERSION=`awk -F' ' '{printf $2}' /etc/fwversion`
+    elif [ -d "/etc/oray" ]; then
+        SYSTEM_TYPE="oray"
+        PLUGIN_DIR="/xunyou"
+        PLUGIN_MOUNT_DIR="/"
+        IF_NAME="br-lan"
+        VENDOR=`cat /etc/device_info | grep DEVICE_MANUFACTURER |awk -F '"' '{print $2}'`
+        MODEL=`cat /etc/device_info | grep DEVICE_REVISION |awk -F '"' '{print $2}'`
+        VERSION=`cat /etc/openwrt_version`
+    else
+        local hostname=`uname -n`
+        if [ "${hostname}" == "XiaoQiang" ]; then
+            SYSTEM_TYPE="xiaomi"
+            PLUGIN_DIR="/data/xunyou"
+            PLUGIN_MOUNT_DIR="/data"
+            IF_NAME="br-lan"
+            VENDOR="XIAOMI"
+            local MODEL=`uci get /usr/share/xiaoqiang/xiaoqiang_version.version.HARDWARE`
+            if [ ${MODEL} == "RA72" ]; then
+                MODEL="AX6000"
+            fi
+            VERSION=`uci get /usr/share/xiaoqiang/xiaoqiang_version.version.ROM`
+        elif [ "${hostname}" == "ARS2" ]; then
+            SYSTEM_TYPE="koolshare"
+            PLUGIN_DIR="/xunyou"
+            PLUGIN_MOUNT_DIR="/"
+            IF_NAME="eth1"
+            VENDOR="KOOLSHARE"
+            MODEL="ARS2"
+            VERSION=`cat /etc/openwrt_version`
+        else
+            curl -s http://127.0.0.1/currentsetting.htm | tr '\r' '\n' > /tmp/.xunyou_tmp
+            local model=`awk -F"=" '$1=="Model" {print $2}' /tmp/.xunyou_tmp`
+            local version=`awk -F"=" '$1=="Firmware" {print $2}' /tmp/.xunyou_tmp`
+
+            rm -f /tmp/.xunyou_tmp
+
+            if [ -n ${model} -a -n ${version} ]; then
+                SYSTEM_TYPE="netgear"
+                PLUGIN_DIR="/data/xunyou"
+                PLUGIN_MOUNT_DIR="/data"
+                IF_NAME="br0"
+                VENDOR="NETGEAR"
+                MODEL="${model}"
+                VERSION="${version#V*}"
+            else
+                log "Unknown system type!"
+                return 16
+            fi
+        fi
+    fi
+
+    IF_MAC=`ip address show ${IF_NAME} | grep link/ether | awk -F ' ' '{print $2}'`
+    if [ -z "${IF_MAC}" ]; then
+        log "Can't find the lan mac!"
+        return 20
+    fi
+
+    if [ -f ${PLUGIN_DIR}/.cache/bind_info ]; then
+        local json=`cat ${PLUGIN_DIR}/.cache/bind_info`
+
+        local key="userName"
+        USER_NAME=`get_json_value "${json}" "${key}"`
+    fi
+
+    unset LD_LIBRARY_PATH
+
+    log "SYSTEM_TYPE=${SYSTEM_TYPE}"
+
+    return 0
+}
+
+install_exit(){
+    rm -rf ${INSTALL_DIR} > /dev/null 2>&1
+
+    log "End to install plugin."
+}
+
+download_install_json()
+{
+    log "vendor=${VENDOR}, model=${MODEL}, version=${VERSION}"
+
+    local resp_info_json=`curl -s -k -X POST -H "Content-Type: application/json" -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' "https://router.xunyou.com/index.php/vendor/get-info"` > /dev/null 2>&1
     if [ $? -ne 0 ] ;then
-        log "curl get info failed!"
-        return 2
+        log "Curl get info failed!"
+        return 1
     fi
 
-    resp_info_json=`echo ${resp_info_json} | sed "s/https://"`
     #判断网站返回的info信息是否正确
-    msg_id="id"
-    id_value=$(get_json_value $resp_info_json $msg_id)
+    local key="id"
+    local value=`get_json_value "${resp_info_json}" "${key}"`
 
-    if [ -z "${id_value}" ];then
-        log "cannot find the msgid"
-        return 3
+    if [ -z "${value}" ];then
+        log "Can't find id!"
+        return 1
     fi
 
-    if [ ${id_value} -ne 1 ];then
-        log "the msgid is error: $id_value"
+    if [ ${value} -ne 1 ];then
+        log "The id is error: ${value}!"
         return 1
     fi
 
     #获取install.json的下载路径
     key="url"
-    url_value=$(get_json_value $resp_info_json $key)
-    if [ -z "${url_value}" ];then
-        log "cannet find the install config file url"
-        return 4
+    value=`get_json_value "${resp_info_json}" "${key}"`
+    if [ -z "${value}" ];then
+        log "Can't find the install json's url!"
+        return 1
     fi
 
-    INSTALL_CONFIG_URL="https:"${url_value}
-    INSTALL_CONFIG_URL=$(echo ${INSTALL_CONFIG_URL} | sed 's/\\//g')
+    local url=`echo ${value} | sed 's/\\\\//g'`
 
-    log "get install config file url success!"
+    download ${url} ${INSTALL_JSON}
+    ret=$?
+    if [ ${ret} -ne 0 ]; then
+        return ${ret}
+    fi
+
+    log "Download install json file success."
+
+    #调整install.json文件的排版格式，便于后续解析
+    sed -e 's/,/\n,\n/g' -e 's/{/\n{\n/g' -e 's/}/\n}\n/g' -e 's/\[/\n\[\n/g' -e 's/\]/\n\]\n/g' -e 's/[ \t]//g' -i ${INSTALL_JSON}
+    sed '/^$/d' -i ${INSTALL_JSON}
 
     return 0
 }
 
-download_install_bin()
+download_plugin()
 {
-    rm -f ${INSTALL_CONFIG}
+    local state
+    local core_md5
+    local core_url
+    local lib_name
+    local lib_keyfile
+    local lib_md5
+    local lib_url
+    local kernel
+    local kernel_md5
+    local kernel_url
 
-    wget --no-check-certificate -O ${INSTALL_CONFIG} ${INSTALL_CONFIG_URL} > /dev/null 2>&1
-    if [ $? -ne 0 ];then
-        log "wget install config file failed"
-        return 5
+    local kernel_release=`uname -r`
+
+    while read line;
+    do
+        if [ "${line}" == '"name":"common"' ]; then
+            state="core"
+            continue
+        elif [ "${line}" == '"name":"libs"' ]; then
+            state="libs"
+            continue
+        elif [ "${line}" == '"name":"kos"' ]; then
+            state="kos"
+            continue
+        fi
+
+        if [ "${state}" == "core" ]; then
+            if [ "${line%%:*}" == '"checksum"' ]; then
+                core_md5=`echo ${line#*:} | tr -d '"'`
+            elif [ "${line%%:*}" == '"url"' ]; then
+                core_url=`echo ${line#*:} | tr -d '"'`
+            fi
+
+            if [ -n "${core_md5}" -a -n "${core_url}" ]; then
+                download ${core_url} ${CORE_TAR} ${core_md5}
+                ret=$?
+                if [ ${ret} -ne 0 ]; then
+                    return ${ret}
+                fi
+
+                core_md5=""
+                core_url=""
+            fi
+        elif [ "${state}" == "libs" ]; then
+            if [ "${line%%:*}" == '"name"' ]; then
+                lib_name=`echo ${line#*:} | tr -d '"'`
+            elif [ "${line%%:*}" == '"keyfile"' ]; then
+                lib_keyfile=`echo ${line#*:} | tr -d '"'`
+            elif [ "${line%%:*}" == '"checksum"' ]; then
+                lib_md5=`echo ${line#*:} | tr -d '"'`
+            elif [ "${line%%:*}" == '"url"' ]; then
+                lib_url=`echo ${line#*:} | tr -d '"'`
+            fi
+
+            if [ -n "${lib_name}" -a -n "${lib_keyfile}" -a -n "${lib_md5}" -a -n "${lib_url}" ]; then
+                local lib_file="${DOWNLOAD_DIR}/${lib_name}.tar.gz"
+
+                #因为插件在调用384固件携带的libcurl时会报错，所以使用自己的库文件
+                if [ "${VERSION%.*}" == "384" -a "${lib_name}" == "libcurl" ]; then
+                    download ${lib_url} ${lib_file} ${lib_md5}
+                    ret=$?
+                    if [ ${ret} -ne 0 ]; then
+                        return ${ret}
+                    fi
+                else
+                    local lib_path=`find /lib/ /usr/lib/ -name ${lib_keyfile}`
+                    if [ -z "${lib_path}" ]; then
+                        download ${lib_url} ${lib_file} ${lib_md5}
+                        ret=$?
+                        if [ ${ret} -ne 0 ]; then
+                            return ${ret}
+                        fi
+                    fi
+                fi
+
+                lib_name=""
+                lib_keyfile=""
+                lib_md5=""
+                lib_url=""
+                lib_file=""
+            fi
+        elif [ "${state}" == "kos" ]; then
+            if [ "${line%%:*}" == '"kernel"' ]; then
+                kernel=`echo ${line#*:} | tr -d '"'`
+            elif [ "${line%%:*}" == '"checksum"' ]; then
+                kernel_md5=`echo ${line#*:} | tr -d '"'`
+            elif [ "${line%%:*}" == '"url"' ]; then
+                kernel_url=`echo ${line#*:} | tr -d '"'`
+            fi
+
+            if [ -n "${kernel}" -a -n "${kernel_md5}" -a -n "${kernel_url}" ]; then
+                if [ "${kernel_release}" == "${kernel}" ]; then
+                    download ${kernel_url} ${KO_TAR} ${kernel_md5}
+                    ret=$?
+                    if [ ${ret} -ne 0 ]; then
+                        return ${ret}
+                    fi
+                fi
+
+                kernel=""
+                kernel_md5=""
+            fi
+        fi
+    done < ${INSTALL_JSON}
+
+    log "Download plugin success."
+
+    return 0
+}
+
+uninstall_plugin()
+{
+    if [ -f ${PLUGIN_DIR}/uninstall.sh ]; then
+        sh ${PLUGIN_DIR}/uninstall.sh upgrade > /dev/null 2>&1
+    elif [ -f ${PLUGIN_DIR}/xunyou_uninstall.sh ]; then
+        sh ${PLUGIN_DIR}/xunyou_uninstall.sh silent > /dev/null 2>&1
+    else
+        rm -rf ${WORK_DIR} ${PLUGIN_DIR}
     fi
 
-    json=$(sed ':a;N;s/\n//g;ta' ${INSTALL_CONFIG})
-    urlString=$(echo $json | awk -F"," '{print $1}' | sed s/\"//g)
-    checksumString=$(echo $json | awk -F"," '{print $2}' | sed s/\"//g)
+    log "Uninstall plugin success."
 
-    installUrl=${urlString#*:}
-    installChecksum=${checksumString#*:}
+    return 0
+}
 
-    wget --no-check-certificate -O ${INSTALL_BIN} ${installUrl} > /dev/null 2>&1
-    if [ $? -ne 0 ];then
-        log "wget install bin file failed"
-        return 5
+install_plugin()
+{
+    #解压缩插件包到INSTALL目录，从中拷贝version、xunyou_daemon.sh、xunyou_uninstall.sh和xunyou_post文件到DOWNLOAD目录
+    tar -C ${INSTALL_DIR} -xzf ${CORE_TAR}
+
+    cp -af ${INSTALL_DIR}/xunyou/version ${DOWNLOAD_DIR}
+    cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_daemon.sh ${DOWNLOAD_DIR}
+    cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_uninstall.sh ${DOWNLOAD_DIR}
+
+    #为兼容老版本，拷贝xunyou_daemon.sh到xunyou_config.sh
+    mkdir -p ${DOWNLOAD_DIR}/scripts
+    cp -af ${DOWNLOAD_DIR}/xunyou_daemon.sh ${DOWNLOAD_DIR}/scripts/xunyou_config.sh
+
+    #如果BACKUP目录有缓存文件，则拷贝到DOWNLOAD目录
+    if [ -d ${BACKUP_DIR}/.cache ]; then
+        cp -arf ${BACKUP_DIR}/.cache ${DOWNLOAD_DIR}
     fi
 
-    chmod 777 ${INSTALL_BIN}
+    #检查插件目录所在分区是否有足够的空间
+    local require=`du -sk ${DOWNLOAD_DIR} | awk -F" " '{print $1}'`
+    local available=`df -k | awk -F" " '$6=="'${PLUGIN_MOUNT_DIR}'" {print $4}' | sed -n 1p`
 
-    checksum=$(md5sum ${INSTALL_BIN})
-    if [ $? -ne 0 ];then
-        log "execute md5sum failed"
-        return 7
+    #预留2k的空间保存daemon日志
+    let "require = ${require} + 2"
+    if [ ${require} -ge ${available} ]; then
+        log "There is not enough space to install plugin!"
+        return 19
     fi
 
-    installChecksum=$(echo ${installChecksum} | tr [a-z] [A-Z])
-    checksum=$(echo ${checksum} | awk '{print $1}' | tr [a-z] [A-Z])
-    if [ ${installChecksum} != ${checksum} ]; then
-        log "the install bin file's checksum is error!"
-        return 8
+    #将DOWNLOAD_DIR移动到PLUGIN_DIR
+    cp -arf ${DOWNLOAD_DIR} ${PLUGIN_DIR}
+    if [ $? -ne 0 ]; then
+        log "Failed to install plugin to ${PLUGIN_DIR}!"
+        return 19
     fi
 
-    log "download install bin file success."
+    #如果是Koolshare梅林固件需要做特殊处理
+    if [ "${SYSTEM_TYPE}" == "merlin" ]; then
+        dbus set xunyou_enable=1
+        cp -rf ${INSTALL_DIR}/xunyou/webs/Module_xunyou.asp /koolshare/webs/
+        cp -rf ${INSTALL_DIR}/xunyou/res/icon-xunyou.png /koolshare/res/
+
+        ln -sf ${PLUGIN_DIR}/xunyou_uninstall.sh /koolshare/scripts/uninstall_xunyou.sh
+        ln -sf ${PLUGIN_DIR}/xunyou_daemon.sh /koolshare/init.d/S90XunYouAcc.sh
+        ln -sf ${PLUGIN_DIR}/xunyou_daemon.sh /koolshare/scripts/xunyou_status.sh
+
+        local plugin_version=`cat ${PLUGIN_DIR}/version`
+
+        dbus set xunyou_version=${plugin_version}
+        dbus set xunyou_title="迅游加速器"
+        dbus set softcenter_module_xunyou_install=1
+        dbus set softcenter_module_xunyou_name=xunyou
+        dbus set softcenter_module_xunyou_version=${plugin_version}
+        dbus set softcenter_module_xunyou_title="迅游加速器"
+        dbus set softcenter_module_xunyou_description="迅游加速器，支持PC和主机加速。"
+    fi
+
+    log "Install plugin success."
 
     return 0
 }
 
 set_xunyou_bak()
 {
-    rm -f ${BACKUP_TAR}
+    if [ -d "${PLUGIN_DIR}" ]; then
+        rm -rf ${BACKUP_DIR}
+        cp -arf ${PLUGIN_DIR} ${BACKUP_DIR}
 
-    if [ -e "${BASE_PATH}/xunyou" ]; then
-        log "begin to backup xunyou"
-
-        cd ${BASE_PATH}/
-        tar -czvf ${BACKUP_TAR} xunyou > /dev/null 2>&1
-        if [ $? -ne 0 ]; then
-            log "backup xunyou failed!"
-            return 17
-        fi
-
-        if [ ${SYSTEM_TYPE} == ${MERLIN} ];then
+        if [ "${SYSTEM_TYPE}" == "merlin" ];then
             OLD_VERSION=`dbus get xunyou_version`
             OLD_TITLE=`dbus get xunyou_title`
         fi
 
-        log "backup xunyou success"
+        log "Backup plugin success."
     else
-        log "no need to backup xunyou"
+        log "No need to backup plugin."
     fi
 
     return 0
@@ -203,220 +495,186 @@ set_xunyou_bak()
 
 restore_xunyou_bak()
 {
-    if [ -f ${BASE_PATH}/xunyou/uninstall.sh ]; then
-        sh ${BASE_PATH}/xunyou/uninstall.sh upgrade > /dev/null 2>&1
-    fi
+    uninstall_plugin upgrade
 
-    if [ ! -f ${BACKUP_TAR} ]; then
-        return 0
-    fi
+    if [ -d "${BACKUP_DIR}" ]; then
+        rm -rf ${PLUGIN_DIR}
+        cp -arf ${BACKUP_DIR} ${PLUGIN_DIR}
 
-    log "begin to restore xunyou backup"
+        if [ "${SYSTEM_TYPE}" == "merlin" ];then
+            dbus set xunyou_enable=1
 
-    tar -zxvf ${BACKUP_TAR} -C ${BASE_PATH} > /dev/null 2>&1
+            cp -rf ${PLUGIN_DIR}/webs/* /koolshare/webs/
+            cp -rf ${PLUGIN_DIR}/res/*  /koolshare/res/
 
-    if [ ${SYSTEM_TYPE} == ${MERLIN} ];then
-        dbus set xunyou_enable=1
+            if [ -f ${PLUGIN_DIR}/xunyou_uninstall.sh ]; then
+                cp -rf ${PLUGIN_DIR}/xunyou_uninstall.sh /koolshare/scripts/uninstall_xunyou.sh
+            else
+                cp -rf ${PLUGIN_DIR}/uninstall.sh /koolshare/scripts/uninstall_xunyou.sh
+            fi
 
-        cp -rf ${BASE_PATH}/xunyou/webs/* ${BASE_PATH}/webs/
-        cp -rf ${BASE_PATH}/xunyou/res/*  ${BASE_PATH}/res/
-        cp -rf ${BASE_PATH}/xunyou/uninstall.sh  ${BASE_PATH}/scripts/uninstall_xunyou.sh
+            if [ -f ${PLUGIN_DIR}/xunyou_daemon.sh ]; then
+                ln -sf ${PLUGIN_DIR}/xunyou_daemon.sh /koolshare/init.d/S90XunYouAcc.sh
+                ln -sf ${PLUGIN_DIR}/xunyou_daemon.sh /koolshare/scripts/xunyou_status.sh
+            else
+                ln -sf ${PLUGIN_DIR}/scripts/xunyou_config.sh /koolshare/init.d/S90XunYouAcc.sh
+                ln -sf ${PLUGIN_DIR}/scripts/xunyou_config.sh /koolshare/scripts/xunyou_status.sh
+            fi
 
-        ln -sf ${BASE_PATH}/xunyou/scripts/xunyou_config.sh ${BASE_PATH}/init.d/S90XunYouAcc.sh
-        ln -sf ${BASE_PATH}/xunyou/scripts/xunyou_config.sh ${BASE_PATH}/scripts/xunyou_status.sh
+            dbus set xunyou_version="${OLD_VERSION}"
+            dbus set xunyou_title="${OLD_TITLE}"
+            dbus set softcenter_module_xunyou_install=1
+            dbus set softcenter_module_xunyou_name=xunyou
+            dbus set softcenter_module_xunyou_version="${OLD_VERSION}"
+            dbus set softcenter_module_xunyou_title="${OLD_TITLE}"
+            dbus set softcenter_module_xunyou_description="迅游加速器，支持PC和主机加速。"
+        fi
 
-        dbus set xunyou_version="${OLD_VERSION}"
-        dbus set xunyou_title="${OLD_TITLE}"
-        dbus set softcenter_module_xunyou_install=1
-        dbus set softcenter_module_xunyou_name=xunyou
-        dbus set softcenter_module_xunyou_version="${OLD_VERSION}"
-        dbus set softcenter_module_xunyou_title="${OLD_TITLE}"
-        dbus set softcenter_module_xunyou_description="迅游加速器，支持PC和主机加速。"
-    elif [ ${SYSTEM_TYPE} == ${ASUS} ];then
-        ln -sf ${BASE_PATH}/xunyou/scripts/xunyou_config.sh /etc/init.d/S90XunYouAcc.sh > /dev/null 2>&1
-    fi
+        rm -rf ${BACKUP_DIR}
 
-    rm -f ${BACKUP_TAR}
+        if [ -f ${PLUGIN_DIR}/xunyou_daemon.sh ]; then
+            sh ${PLUGIN_DIR}/xunyou_daemon.sh simple
+        else
+            sh ${PLUGIN_DIR}/scripts/xunyou_config.sh simple
+        fi
 
-    sh ${BASE_PATH}/xunyou/scripts/xunyou_config.sh simple
-
-    log "restore xunyou backup success"
-}
-
-check_system()
-{
-    if [ -d "/koolshare" ]; then
-        SYSTEM_TYPE="merlin"
-        BASE_PATH="/koolshare"
-        IF_NAME="br0"
-        VENDOR=$(nvram get wps_mfstring)
-        MODEL=$(nvram get productid)
-        VERSION=$(nvram get buildno)
-    elif [ -d "/jffs" ]; then
-        SYSTEM_TYPE="asus"
-        BASE_PATH="/jffs"
-        IF_NAME="br0"
-        VENDOR=$(nvram get wps_mfstring)
-        MODEL=$(nvram get productid)
-        VERSION=$(nvram get buildno)
-    elif [ -d "/var/tmp/misc2" ]; then
-        SYSTEM_TYPE="linksys"
-        BASE_PATH="/var/tmp/misc2"
-        IF_NAME="br0"
-        VENDOR=$(nvram kget manufacturer)
-        MODEL=$(nvram kget modelNumber)
-        VERSION=$(awk -F' ' '{printf $2}' /etc/fwversion)
-    elif [ -d "/data" ]; then
-        SYSTEM_TYPE="netgear"
-        BASE_PATH="/data"
-        IF_NAME="br0"
-        VENDOR="NETGEAR"
-        MODEL=$(cat /module_name)
-        VERSION=$(cat /firmware_version)
-    elif [ -f "/etc/openwrt_version" ]; then
-        SYSTEM_TYPE="koolshare"
-        BASE_PATH=""
-        IF_NAME="eth1"
-        VENDOR="KOOLSHARE"
-        MODEL="ARS2"
-        VERSION=$(cat /etc/openwrt_version)
-    else
-        log "unknown system type, now exit the installation!"
-        return 16
+        log "Restore xunyou backup success."
     fi
 
     return 0
 }
 
-uninstall_xunyou()
-{
-    if [ -f ${BASE_PATH}/xunyou/uninstall.sh ]; then
-        sh ${BASE_PATH}/xunyou/uninstall.sh upgrade > /dev/null 2>&1
-
-        log "uninstall xunyou success"
-    fi
-}
 check_running_status()
 {
+    log "Checking plugin running status..."
+
     iptables -t mangle -n -L ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? != 0 ];then
-        log "iptables mangle chain ${XUNYOU_CHAIN} does not exist"
-        return 1
+    if [ $? -ne 0 ];then
+        log "Iptables mangle chain ${XUNYOU_CHAIN} does not exist!"
+        return 18
     fi
 
-    iptables -t mangle -n -L ${XUNYOUACC_CHAIN} >/dev/null 2>&1
-    if [ $? != 0 ];then
-        log "iptables mangle chain ${XUNYOUACC_CHAIN} does not exist"
-        return 1
+    iptables -t mangle -n -L ${XUNYOU_ACC_CHAIN} >/dev/null 2>&1
+    if [ $? -ne 0 ];then
+        log "Iptables mangle chain ${XUNYOU_ACC_CHAIN} does not exist!"
+        return 18
     fi
 
     iptables -t mangle -C PREROUTING -i ${IF_NAME} -p udp -j ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? != 0 ]; then
-        log "iptables mangle rule does not exist"
-        return 1
+    if [ $? -ne 0 ]; then
+        log "Iptables mangle rule does not exist"
+        return 18
     fi
 
     iptables -t nat -n -L ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? != 0 ];then
-        log "iptables nat chain ${XUNYOU_CHAIN} does not exist"
-        return 1
+    if [ $? -ne 0 ];then
+        log "Iptables nat chain ${XUNYOU_CHAIN} does not exist!"
+        return 18
     fi
 
-    iptables -t nat -n -L ${XUNYOUACC_CHAIN} >/dev/null 2>&1
-    if [ $? != 0 ];then
-        log "iptables nat chain ${XUNYOUACC_CHAIN} does not exist"
-        return 1
+    iptables -t nat -n -L ${XUNYOU_ACC_CHAIN} >/dev/null 2>&1
+    if [ $? -ne 0 ];then
+        log "Iptables nat chain ${XUNYOU_ACC_CHAIN} does not exist!"
+        return 18
     fi
 
     iptables -t nat -C PREROUTING -i ${IF_NAME} -j ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? != 0 ]; then
-        log "iptables nat rule does not exist"
-        return 1
+    if [ $? -ne 0 ]; then
+        log "Iptables nat rule does not exist!"
+        return 18
     fi
 
-    ctrlPid=`ps | grep -v grep | grep -w ${CTRL_PROC} | awk -F ' ' '{print $1}'`
-    if [ -z ${ctrlPid} ]; then
-        return 1
+    if [ ! -e ${PLUGIN_CONF} ]; then
+        log "Config file ${PLUGIN_CONF} does not exist!"
+        return 18
     fi
 
-    proxyPid=`ps | grep -v grep | grep -w ${PROXY_PROC} | awk -F ' ' '{print $1}'`
-    if [ -z ${proxyPid} ]; then
-        return 1
+    local pid=`ps -w | grep ${CTRL_PROC} | grep -v grep | awk -F" " '{print $1}'`
+    if [ -z "${pid}" ]; then
+        log "Process ${CTRL_PROC} does not exist!"
+        return 18
     fi
+
+    pid=`ps -w | grep ${PROXY_PROC} | grep -v grep | awk -F" " '{print $1}'`
+    if [ -z "${pid}" ]; then
+        log "Process ${PROXY_PROC} does not exist!"
+        return 18
+    fi
+
+    local support_ipset=`grep "supportIpset" ${PLUGIN_CONF} | tr -d "," | awk -F":" '{print $2}'`
+    if [ "${support_ipset}" == "false" ]; then
+        pid=`ps -w | grep ${IPSET_PROC} | grep -v grep | awk -F" " '{print $1}'`
+        if [ -z "${pid}" ]; then
+            log "Process ${IPSET_PROC} does not exist!"
+            return 18
+        fi
+    fi
+
+    log "Plugin running status is ok."
 
     return 0
 }
 
-rm -f /tmp/xunyou_install.log
-log "begin to install the xunyou plugin！"
-
-mkdir -p /tmp/xunyou
-
-check_system
+install_init
 ret=$?
 if [ ${ret} -ne 0 ];then
-    xunyou_post_install_log failed
+    install_exit
     exit ${ret}
 fi
 
+download_install_json
+ret=$?
+if [ ${ret} -ne 0 ];then
+    install_exit
+    exit ${ret}
+fi
+
+download_plugin
+ret=$?
+if [ ${ret} -ne  0 ];then
+    install_exit
+    exit ${ret}
+fi
+
+#安装之前先备份
 set_xunyou_bak
 ret=$?
 if [ ${ret} -ne 0 ];then
-    xunyou_post_install_log failed
-    exit ${ret}
-fi
-
-get_install_config_url
-ret=$?
-if [ ${ret} -ne 0 ];then
-    log "get install config file url failed!"
-    restore_xunyou_bak
-    remove_install_file
-    xunyou_post_install_log failed
-    exit ${ret}
-fi
-
-download_install_bin
-ret=$?
-if [ ${ret} -ne  0 ];then
-    log "download xunyou install bin file failed!"
-    restore_xunyou_bak
-    remove_install_file
-    xunyou_post_install_log failed
+    install_exit
     exit ${ret}
 fi
 
 #执行卸载操作
-uninstall_xunyou
-
-log "begin to install xunyou"
-
-/tmp/xunyou/adaptation_install ${SYSTEM_TYPE} >> ${logPath}
+uninstall_plugin
 ret=$?
-if [ ${ret} -ne 0 ]; then
-    log "install xunyou failed!"
+if [ ${ret} -ne 0 ];then
     restore_xunyou_bak
-    remove_install_file
-    xunyou_post_install_log failed
+    install_exit
     exit ${ret}
 fi
 
-sh ${BASE_PATH}/xunyou/scripts/xunyou_config.sh app
+#执行安装操作
+install_plugin
+ret=$?
+if [ ${ret} -ne 0 ];then
+    restore_xunyou_bak
+    install_exit
+    exit ${ret}
+fi
+
+sh ${PLUGIN_DIR}/xunyou_daemon.sh simple
 
 sleep 3
 
 check_running_status
 if [ $? -ne 0 ]; then
-    log "check xunyou running status failed!!"
     restore_xunyou_bak
-    remove_install_file
-    xunyou_post_install_log failed
+    install_exit
     exit ${ret}
 fi
 
-xunyou_post_install_log success
-log "install xunyou success!"
+post_log success
 
-remove_install_file
+log "Install and start plugin success!"
 
-exit 0
+install_exit
