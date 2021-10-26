@@ -222,8 +222,9 @@ install_init()
         local key="userName"
         USER_NAME=`get_json_value "${json}" "${key}"`
     fi
-
-    unset LD_LIBRARY_PATH
+    
+    local library_path=`echo ${LD_LIBRARY_PATH} | sed 's#/tmp/xunyou/lib:##g'`
+    export LD_LIBRARY_PATH=${library_path}
 
     log "SYSTEM_TYPE=${SYSTEM_TYPE}"
 
@@ -294,6 +295,7 @@ download_plugin()
     local lib_keyfile
     local lib_md5
     local lib_url
+    local lib_file
     local kernel
     local kernel_md5
     local kernel_url
@@ -342,23 +344,14 @@ download_plugin()
             fi
 
             if [ -n "${lib_name}" -a -n "${lib_keyfile}" -a -n "${lib_md5}" -a -n "${lib_url}" ]; then
-                local lib_file="${DOWNLOAD_DIR}/${lib_name}.tar.gz"
+                lib_file="${DOWNLOAD_DIR}/${lib_name}.tar.gz"
 
-                #因为插件在调用384固件携带的libcurl时会报错，所以使用自己的库文件
-                if [ "${VERSION%.*}" == "384" -a "${lib_name}" == "libcurl" ]; then
+                local lib_path=`find /lib/ /usr/lib/ -name ${lib_keyfile}`
+                if [ -z "${lib_path}" ]; then
                     download ${lib_url} ${lib_file} ${lib_md5}
                     ret=$?
                     if [ ${ret} -ne 0 ]; then
                         return ${ret}
-                    fi
-                else
-                    local lib_path=`find /lib/ /usr/lib/ -name ${lib_keyfile}`
-                    if [ -z "${lib_path}" ]; then
-                        download ${lib_url} ${lib_file} ${lib_md5}
-                        ret=$?
-                        if [ ${ret} -ne 0 ]; then
-                            return ${ret}
-                        fi
                     fi
                 fi
 
