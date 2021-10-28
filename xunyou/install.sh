@@ -1,5 +1,7 @@
 #!/bin/sh
 
+[ -f /etc/profile ] && . /etc/profile >/dev/null
+
 ACTION=$1
 
 SYSTEM_TYPE=""
@@ -37,6 +39,8 @@ XUNYOU_ACC_CHAIN="XUNYOU_ACC"
 
 INSTALL_LOG="/tmp/.xunyou_install.log"
 
+PUBLIC_IP=""
+
 get_json_value()
 {
     local json=${1}
@@ -59,15 +63,6 @@ post_log()
     local tmp_file="/tmp/.xy-post.log"
     local time=`date +"%Y-%m-%d %H:%M:%S"`
     local guid=`echo -n ''${IF_MAC}'merlinrouterxunyou2020!@#$' | md5sum | awk -F ' ' '{print $1}'`
-    local public_ip
-    local json
-    local key
-
-    json=`curl -s http://router.xunyou.com/index.php/Info/getClientIp` >/dev/null 2>&1
-    if [ -n "${json}" ]; then
-        key="ip"
-        public_ip=`get_json_value "${json}" "${key}"`
-    fi
 
     local success
     if [ "$1" == "failed" ]; then
@@ -83,7 +78,7 @@ post_log()
         type=3
     fi
 
-    local data='{"id":1003,"user":"${USER_NAME}","mac":"'${IF_MAC}'","data":{"type":"'${type}'","account":"${USER_NAME}","model":"'${MODEL}'","guid":"'${guid}'","mac":"'${IF_MAC}'","publicIp":"'${public_ip}'","source":0, "success":"'${success}'","reporttime":"'${time}'"}}'
+    local data='{"id":1003,"user":"${USER_NAME}","mac":"'${IF_MAC}'","data":{"type":"'${type}'","account":"${USER_NAME}","model":"'${MODEL}'","guid":"'${guid}'","mac":"'${IF_MAC}'","publicIp":"'${PUBLIC_IP}'","source":0, "success":"'${success}'","reporttime":"'${time}'"}}'
 
     echo ${data} > ${tmp_file}
 
@@ -128,6 +123,9 @@ download()
 
 install_init()
 {
+    local library_path=`echo ${LD_LIBRARY_PATH} | sed "s#${WORK_DIR}/lib:##g"`
+    export LD_LIBRARY_PATH=${library_path}
+
     rm -f ${INSTALL_LOG}
 
     log "Begin to install plugin."
@@ -210,21 +208,27 @@ install_init()
         fi
     fi
 
-    IF_MAC=`ip address show ${IF_NAME} | grep link/ether | awk -F ' ' '{print $2}'`
+    IF_MAC=`ip address show ${IF_NAME} | grep link/ether | awk -F ' ' '{print $2}' | tr '[A-Z]' '[a-z]'`
     if [ -z "${IF_MAC}" ]; then
         log "Can't find the lan mac!"
         return 20
     fi
 
-    if [ -f ${PLUGIN_DIR}/.cache/bind_info ]; then
-        local json=`cat ${PLUGIN_DIR}/.cache/bind_info`
+    local json
+    local key
 
-        local key="userName"
+    if [ -f ${PLUGIN_DIR}/.cache/bind_info ]; then
+        json=`cat ${PLUGIN_DIR}/.cache/bind_info`
+
+        key="userName"
         USER_NAME=`get_json_value "${json}" "${key}"`
     fi
-    
-    local library_path=`echo ${LD_LIBRARY_PATH} | sed 's#/tmp/xunyou/lib:##g'`
-    export LD_LIBRARY_PATH=${library_path}
+
+    json=`curl -s http://router.xunyou.com/index.php/Info/getClientIp` >/dev/null 2>&1
+    if [ -n "${json}" ]; then
+        key="ip"
+        PUBLIC_IP=`get_json_value "${json}" "${key}"`
+    fi
 
     log "SYSTEM_TYPE=${SYSTEM_TYPE}"
 
@@ -299,6 +303,13 @@ download_plugin()
     local kernel
     local kernel_md5
     local kernel_url
+    local libcurl_md5
+    local libcurl_url
+    local libcurl_file
+    local libevent_openssl_md5
+    local libevent_openssl_url
+    local libevent_openssl_file
+    local download_related_lib=0
 
     local kernel_release=`uname -r`
 
@@ -353,6 +364,20 @@ download_plugin()
                     if [ ${ret} -ne 0 ]; then
                         return ${ret}
                     fi
+
+                    if [ "${lib_name}" == "libssl" ]; then
+                        download_related_lib=1
+                    fi
+                else
+                    if [ "${lib_name}" == "libcurl" ]; then
+                        libcurl_md5="${lib_md5}"
+                        libcurl_url="${lib_url}"
+                        libcurl_file="${lib_file}"
+                    elif [ "${lib_name}" == "libevent_openssl" ]; then
+                        libevent_openssl_md5="${lib_md5}"
+                        libevent_openssl_url="${lib_url}"
+                        libevent_openssl_file="${lib_file}"
+                    fi
                 fi
 
                 lib_name=""
@@ -385,6 +410,25 @@ download_plugin()
             fi
         fi
     done < ${INSTALL_JSON}
+
+    # 因为libcurl和libevent_openssl依赖于libssl编译出来的，为了版本匹配，必须配套使用。所以如果需要下载libssl，则也需要下载libcurl和libevent_openssl。
+    if [ ${download_related_lib} -eq 1 ]; then
+        if [ -n "${libcurl_md5}" -a -n "${libcurl_url}" -a -n "${libcurl_file}" ]; then
+            download ${libcurl_url} ${libcurl_file} ${libcurl_md5}
+            ret=$?
+            if [ ${ret} -ne 0 ]; then
+                return ${ret}
+            fi
+        fi
+
+        if [ -n "${libevent_openssl_md5}" -a -n "${libevent_openssl_url}" -a -n "${libevent_openssl_file}" ]; then
+            download ${libevent_openssl_url} ${libevent_openssl_file} ${libevent_openssl_md5}
+            ret=$?
+            if [ ${ret} -ne 0 ]; then
+                return ${ret}
+            fi
+        fi
+    fi
 
     log "Download plugin success."
 
