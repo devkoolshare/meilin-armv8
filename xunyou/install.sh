@@ -41,6 +41,18 @@ INSTALL_LOG="/tmp/.xunyou_install.log"
 
 PUBLIC_IP=""
 
+#返回码说明
+#RET_OK=0
+#RET_UNKOWN_SYSTEM_TYPE=1
+#RET_LAN_MAC_NOT_FOUND=2
+#RET_DOWNLOAD_FAILED=3
+#RET_MD5_MISMATCH=4
+#RET_PARSE_FAILED=5
+#RET_BACKUP_FAILED=6
+#RET_SPACE_NOT_ENOUGH=7
+#RET_INSTALL_FAILED=8
+#RET_START_FAILED=9
+
 get_json_value()
 {
     local json=${1}
@@ -100,21 +112,21 @@ download()
     if [ $? -ne 0 ]; then
         log "Failed: curl (-L) -s -k ${url} -o ${file} ||
             wget -q --no-check-certificate $url -O ${file}!"
-        return 5
+        return 3
     fi
 
     if [ -n "$md5" ]; then
         local download_md5=`md5sum ${file}`
         if [ $? -ne 0 ]; then
             log "Execute md5sum failed!"
-            return 7
+            return 4
         fi
 
         download_md5=`echo ${download_md5} | awk '{print $1}' | tr [a-z] [A-Z]`
 
         if [ "$download_md5" != "$md5" ]; then
             log "The checksum of ${file} does not match!"
-            return 8
+            return 4
         fi
     fi
 
@@ -173,7 +185,7 @@ install_init()
             PLUGIN_MOUNT_DIR="/data"
             IF_NAME="br-lan"
             VENDOR="XIAOMI"
-            local MODEL=`uci get /usr/share/xiaoqiang/xiaoqiang_version.version.HARDWARE`
+            MODEL=`uci get /usr/share/xiaoqiang/xiaoqiang_version.version.HARDWARE`
             if [ ${MODEL} == "RA72" ]; then
                 MODEL="AX6000"
             fi
@@ -203,7 +215,7 @@ install_init()
                 VERSION="${version#V*}"
             else
                 log "Unknown system type!"
-                return 16
+                return 1
             fi
         fi
     fi
@@ -211,7 +223,7 @@ install_init()
     IF_MAC=`ip address show ${IF_NAME} | grep link/ether | awk -F ' ' '{print $2}' | tr '[A-Z]' '[a-z]'`
     if [ -z "${IF_MAC}" ]; then
         log "Can't find the lan mac!"
-        return 20
+        return 2
     fi
 
     local json
@@ -248,7 +260,7 @@ download_install_json()
     local resp_info_json=`curl -s -k -X POST -H "Content-Type: application/json" -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' "https://router.xunyou.com/index.php/vendor/get-info"` > /dev/null 2>&1
     if [ $? -ne 0 ] ;then
         log "Curl get info failed!"
-        return 1
+        return 3
     fi
 
     #判断网站返回的info信息是否正确
@@ -257,12 +269,12 @@ download_install_json()
 
     if [ -z "${value}" ];then
         log "Can't find id!"
-        return 1
+        return 5
     fi
 
     if [ ${value} -ne 1 ];then
         log "The id is error: ${value}!"
-        return 1
+        return 5
     fi
 
     #获取install.json的下载路径
@@ -270,7 +282,7 @@ download_install_json()
     value=`get_json_value "${resp_info_json}" "${key}"`
     if [ -z "${value}" ];then
         log "Can't find the install json's url!"
-        return 1
+        return 5
     fi
 
     local url=`echo ${value} | sed 's/\\\\//g'`
@@ -476,14 +488,14 @@ install_plugin()
     let "require = ${require} + 2"
     if [ ${require} -ge ${available} ]; then
         log "There is not enough space to install plugin!"
-        return 19
+        return 7
     fi
 
     #将DOWNLOAD_DIR移动到PLUGIN_DIR
     cp -arf ${DOWNLOAD_DIR} ${PLUGIN_DIR}
     if [ $? -ne 0 ]; then
         log "Failed to install plugin to ${PLUGIN_DIR}!"
-        return 19
+        return 8
     fi
 
     #如果是Koolshare梅林固件需要做特殊处理
@@ -512,11 +524,35 @@ install_plugin()
     return 0
 }
 
+start_plugin()
+{
+    sh ${PLUGIN_DIR}/xunyou_daemon.sh simple >> ${INSTALL_LOG}
+    if [ $? -ne 0 ]; then
+        log "Failed to start plugin."
+        return 9
+    fi
+
+    sleep 1
+
+    sh ${PLUGIN_DIR}/xunyou_daemon.sh status >> ${INSTALL_LOG}
+    if [ $? -ne 0 ]; then
+        log "Plugin's running status is not ok."
+        return 9
+    fi
+
+    return 0
+}
+
 set_xunyou_bak()
 {
     if [ -d "${PLUGIN_DIR}" ]; then
         rm -rf ${BACKUP_DIR}
+
         cp -arf ${PLUGIN_DIR} ${BACKUP_DIR}
+        if [ $? -ne 0 ]; then
+            log "Failed to backup plugin!"
+            return 6
+        fi
 
         if [ "${SYSTEM_TYPE}" == "merlin" ];then
             OLD_VERSION=`dbus get xunyou_version`
@@ -582,77 +618,6 @@ restore_xunyou_bak()
     return 0
 }
 
-check_running_status()
-{
-    log "Checking plugin running status..."
-
-    iptables -t mangle -n -L ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? -ne 0 ];then
-        log "Iptables mangle chain ${XUNYOU_CHAIN} does not exist!"
-        return 18
-    fi
-
-    iptables -t mangle -n -L ${XUNYOU_ACC_CHAIN} >/dev/null 2>&1
-    if [ $? -ne 0 ];then
-        log "Iptables mangle chain ${XUNYOU_ACC_CHAIN} does not exist!"
-        return 18
-    fi
-
-    iptables -t mangle -C PREROUTING -i ${IF_NAME} -p udp -j ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        log "Iptables mangle rule does not exist"
-        return 18
-    fi
-
-    iptables -t nat -n -L ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? -ne 0 ];then
-        log "Iptables nat chain ${XUNYOU_CHAIN} does not exist!"
-        return 18
-    fi
-
-    iptables -t nat -n -L ${XUNYOU_ACC_CHAIN} >/dev/null 2>&1
-    if [ $? -ne 0 ];then
-        log "Iptables nat chain ${XUNYOU_ACC_CHAIN} does not exist!"
-        return 18
-    fi
-
-    iptables -t nat -C PREROUTING -i ${IF_NAME} -j ${XUNYOU_CHAIN} >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        log "Iptables nat rule does not exist!"
-        return 18
-    fi
-
-    if [ ! -e ${PLUGIN_CONF} ]; then
-        log "Config file ${PLUGIN_CONF} does not exist!"
-        return 18
-    fi
-
-    local pid=`ps -w | grep ${CTRL_PROC} | grep -v grep | awk -F" " '{print $1}'`
-    if [ -z "${pid}" ]; then
-        log "Process ${CTRL_PROC} does not exist!"
-        return 18
-    fi
-
-    pid=`ps -w | grep ${PROXY_PROC} | grep -v grep | awk -F" " '{print $1}'`
-    if [ -z "${pid}" ]; then
-        log "Process ${PROXY_PROC} does not exist!"
-        return 18
-    fi
-
-    local support_ipset=`grep "supportIpset" ${PLUGIN_CONF} | tr -d "," | awk -F":" '{print $2}'`
-    if [ "${support_ipset}" == "false" ]; then
-        pid=`ps -w | grep ${IPSET_PROC} | grep -v grep | awk -F" " '{print $1}'`
-        if [ -z "${pid}" ]; then
-            log "Process ${IPSET_PROC} does not exist!"
-            return 18
-        fi
-    fi
-
-    log "Plugin running status is ok."
-
-    return 0
-}
-
 install_init
 ret=$?
 if [ ${ret} -ne 0 ];then
@@ -700,12 +665,10 @@ if [ ${ret} -ne 0 ];then
     exit ${ret}
 fi
 
-sh ${PLUGIN_DIR}/xunyou_daemon.sh simple
-
-sleep 3
-
-check_running_status
-if [ $? -ne 0 ]; then
+#启动插件
+start_plugin
+ret=$?
+if [ ${ret} -ne 0 ]; then
     restore_xunyou_bak
     install_exit
     exit ${ret}
