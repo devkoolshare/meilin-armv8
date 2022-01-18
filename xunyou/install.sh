@@ -181,14 +181,11 @@ install_init()
         local hostname=`uname -n`
         if [ "${hostname}" == "XiaoQiang" ]; then
             SYSTEM_TYPE="xiaomi"
-            PLUGIN_DIR="/data/xunyou"
+            PLUGIN_DIR="/userdisk/appdata/2882303761520108685"
             PLUGIN_MOUNT_DIR="/data"
             IF_NAME="br-lan"
             VENDOR="XIAOMI"
             MODEL=`uci get /usr/share/xiaoqiang/xiaoqiang_version.version.HARDWARE`
-            if [ ${MODEL} == "RA72" ]; then
-                MODEL="AX6000"
-            fi
             VERSION=`uci get /usr/share/xiaoqiang/xiaoqiang_version.version.ROM`
         elif [ "${hostname}" == "ARS2" ]; then
             SYSTEM_TYPE="koolshare"
@@ -464,11 +461,12 @@ uninstall_plugin()
 
 install_plugin()
 {
-    #解压缩插件包到INSTALL目录，从中拷贝version、xunyou_daemon.sh、xunyou_uninstall.sh和xunyou_post文件到DOWNLOAD目录
+    #解压缩插件包到INSTALL目录，从中拷贝version、xunyou_daemon.sh、xunyou_firewall.sh、xunyou_uninstall.sh和xunyou_post文件到DOWNLOAD目录
     tar -C ${INSTALL_DIR} -xzf ${CORE_TAR}
 
     cp -af ${INSTALL_DIR}/xunyou/version ${DOWNLOAD_DIR}
     cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_daemon.sh ${DOWNLOAD_DIR}
+    cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_firewall.sh ${DOWNLOAD_DIR}/firewall.sh
     cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_uninstall.sh ${DOWNLOAD_DIR}
 
     #为兼容老版本，拷贝xunyou_daemon.sh到xunyou_config.sh
