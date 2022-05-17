@@ -197,6 +197,11 @@ install_init()
             VERSION=`cat /etc/openwrt_version`
         else
             curl -s http://127.0.0.1/currentsetting.htm | tr '\r' '\n' > /tmp/.xunyou_tmp
+            if [ ! -f /tmp/.xunyou_tmp ]; then
+                log "Failed: curl -s --connect-timeout 3 --retry 3 http://127.0.0.1/currentsetting.htm"
+                return 1
+            fi
+
             local model=`awk -F"=" '$1=="Model" {print $2}' /tmp/.xunyou_tmp`
             local version=`awk -F"=" '$1=="Firmware" {print $2}' /tmp/.xunyou_tmp`
 
@@ -204,12 +209,16 @@ install_init()
 
             if [ -n ${model} -a -n ${version} ]; then
                 SYSTEM_TYPE="netgear"
-                PLUGIN_DIR="/data/xunyou"
                 PLUGIN_MOUNT_DIR="/data"
                 IF_NAME="br0"
                 VENDOR="NETGEAR"
                 MODEL="${model}"
-                VERSION="${version#V*}"
+                VERSION="${version#V*}"     
+                if [ ${MODEL:0:6} == "RAX120" ]; then
+                    PLUGIN_DIR="/tmp/data/xunyou"
+                else
+                    PLUGIN_DIR="/data/xunyou"
+                fi
             else
                 log "Unknown system type!"
                 return 1
