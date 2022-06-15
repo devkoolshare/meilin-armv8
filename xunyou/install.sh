@@ -15,6 +15,8 @@ IF_MAC=""
 PLUGIN_MOUNT_DIR=“”
 PLUGIN_CONF=""
 USER_NAME=""
+USER_ID="0"
+PLUGIN_VERSION=""
 
 WORK_DIR="/tmp/xunyou"
 INSTALL_DIR="/tmp/.xunyou_install"
@@ -68,35 +70,59 @@ log()
     echo [`date +"%Y-%m-%d %H:%M:%S"`] "${1}" >> ${INSTALL_LOG}
 }
 
-post_log()
+post_es_log()
 {
-    [ ! -e "${WORK_DIR}/xunyou/bin/${POST_PROC}" ] && return 0
-
-    local tmp_file="/tmp/.xy-post.log"
-    local time=`date +"%Y-%m-%d %H:%M:%S"`
+    #local time=`date +"%Y-%m-%d %H:%M:%S"`
+    
+    if [ -f ${PLUGIN_DIR}/version ]; then
+        PLUGIN_VERSION=`cat ${PLUGIN_DIR}/version`
+    fi
+    
+    local uid=${USER_ID}
     local guid=`echo -n ''${IF_MAC}'merlinrouterxunyou2020!@#$' | md5sum | awk -F ' ' '{print $1}'`
-
-    local success
-    if [ "$1" == "failed" ]; then
-        success=0
-    else
-        success=1
+    curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\",\"cookie_id\":\"${guid}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/public-properties >/dev/null 2>&1
+    if [ $? -ne 0 ] ;then
+        log "Curl post es public failed!"
     fi
-
-    local type
-    if [ "${ACTION}" == "upgrade" ]; then
-        type=7
+    
+    if [ "$2" == "fail" ]; then
+        local error_code="$3"
     else
-        type=3
+        local error_code="N/A"
     fi
-
-    local data='{"id":1003,"user":"${USER_NAME}","mac":"'${IF_MAC}'","data":{"type":"'${type}'","account":"${USER_NAME}","model":"'${MODEL}'","guid":"'${guid}'","mac":"'${IF_MAC}'","publicIp":"'${PUBLIC_IP}'","source":0, "success":"'${success}'","reporttime":"'${time}'"}}'
-
-    echo ${data} > ${tmp_file}
-
-    ${WORK_DIR}/bin/${POST_PROC} -d "acceldata.xunyou.com" -p 9240 -f ${tmp_file} >/dev/null 2>&1
-
-    rm -f ${tmp_file}
+    
+    local device_id="${guid}"
+    
+    if [ "$1" == "install" ]; then
+        if [ "${ACTION}" == "upgrade" ]; then
+            curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_update\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+            if [ $? -ne 0 ] ;then
+                log "Curl post es public failed!"
+            fi
+        else
+            curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+            if [ $? -ne 0 ] ;then
+                log "Curl post es public failed!"
+            fi
+        fi
+    elif [ "$1" == "install_start" ]; then
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        if [ $? -ne 0 ] ;then
+            log "Curl post es public failed!"
+        fi
+    elif [ "$1" == "restore_backup" ]; then
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        if [ $? -ne 0 ] ;then
+            log "Curl post es public failed!"
+        fi
+    elif [ "$1" == "backup_start" ]; then
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        if [ $? -ne 0 ] ;then
+            log "Curl post es public failed!"
+        fi
+    else
+        return 0
+    fi 
 }
 
 download()
@@ -240,12 +266,19 @@ install_init()
 
         key="userName"
         USER_NAME=`get_json_value "${json}" "${key}"`
+        
+        key="userId"
+        USER_ID=`get_json_value "${json}" "${key}"`
     fi
 
     json=`curl -s http://router.xunyou.com/index.php/Info/getClientIp` >/dev/null 2>&1
     if [ -n "${json}" ]; then
         key="ip"
         PUBLIC_IP=`get_json_value "${json}" "${key}"`
+    fi
+    
+    if [ -f ${PLUGIN_DIR}/version ]; then
+        PLUGIN_VERSION=`cat ${PLUGIN_DIR}/version`
     fi
 
     log "SYSTEM_TYPE=${SYSTEM_TYPE}"
@@ -628,6 +661,7 @@ restore_xunyou_bak()
 install_init
 ret=$?
 if [ ${ret} -ne 0 ];then
+    post_es_log install fail ${ret}
     install_exit
     exit ${ret}
 fi
@@ -635,6 +669,7 @@ fi
 download_install_json
 ret=$?
 if [ ${ret} -ne 0 ];then
+    post_es_log install fail ${ret}
     install_exit
     exit ${ret}
 fi
@@ -642,6 +677,7 @@ fi
 download_plugin
 ret=$?
 if [ ${ret} -ne  0 ];then
+    post_es_log install fail ${ret}
     install_exit
     exit ${ret}
 fi
@@ -650,6 +686,7 @@ fi
 set_xunyou_bak
 ret=$?
 if [ ${ret} -ne 0 ];then
+    post_es_log install fail ${ret}
     install_exit
     exit ${ret}
 fi
@@ -658,7 +695,9 @@ fi
 uninstall_plugin
 ret=$?
 if [ ${ret} -ne 0 ];then
+    post_es_log install fail ${ret}
     restore_xunyou_bak
+    post_es_log restore_backup success
     install_exit
     exit ${ret}
 fi
@@ -667,21 +706,27 @@ fi
 install_plugin
 ret=$?
 if [ ${ret} -ne 0 ];then
+    post_es_log install fail ${ret}
     restore_xunyou_bak
+    post_es_log restore_backup success
     install_exit
     exit ${ret}
 fi
 
+post_es_log install success
 #启动插件
 start_plugin
 ret=$?
 if [ ${ret} -ne 0 ]; then
+    post_es_log install_start fail ${ret}
     restore_xunyou_bak
+    post_es_log restore_backup success
+    post_es_log backup_start success
     install_exit
     exit ${ret}
 fi
 
-post_log success
+post_es_log install_start success
 
 log "Install and start plugin success!"
 
