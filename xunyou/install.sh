@@ -14,8 +14,6 @@ PLUGIN_VERSION=""
 IF_MAC=""
 PLUGIN_MOUNT_DIR=“”
 PLUGIN_CONF=""
-USER_NAME=""
-USER_ID="0"
 PLUGIN_VERSION=""
 
 WORK_DIR="/tmp/xunyou"
@@ -31,17 +29,7 @@ KO_TAR="${DOWNLOAD_DIR}/ko.tar.gz"
 OLD_VERSION=""
 OLD_TITLE=""
 
-CTRL_PROC="xunyou_ctrl"
-PROXY_PROC="xunyou_proxy"
-IPSET_PROC="xunyou_ipset"
-POST_PROC="xunyou_post"
-
-XUNYOU_CHAIN="XUNYOU"
-XUNYOU_ACC_CHAIN="XUNYOU_ACC"
-
 INSTALL_LOG="/tmp/.xunyou_install.log"
-
-PUBLIC_IP=""
 
 #返回码说明
 #RET_OK=0
@@ -73,56 +61,55 @@ log()
 post_es_log()
 {
     #local time=`date +"%Y-%m-%d %H:%M:%S"`
-    
+
     if [ -f ${PLUGIN_DIR}/version ]; then
         PLUGIN_VERSION=`cat ${PLUGIN_DIR}/version`
     fi
-    
-    local uid=${USER_ID}
+
     local guid=`echo -n ''${IF_MAC}'merlinrouterxunyou2020!@#$' | md5sum | awk -F ' ' '{print $1}'`
-    curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\",\"cookie_id\":\"${guid}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/public-properties >/dev/null 2>&1
+    curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\",\"cookie_id\":\"${guid}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/public-properties >/dev/null 2>&1
     if [ $? -ne 0 ] ;then
         log "Curl post es public failed!"
     fi
-    
+
     if [ "$2" == "fail" ]; then
         local error_code="$3"
     else
         local error_code="N/A"
     fi
-    
+
     local device_id="${guid}"
-    
+
     if [ "$1" == "install" ]; then
+        local event_id
         if [ "${ACTION}" == "upgrade" ]; then
-            curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_update\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
-            if [ $? -ne 0 ] ;then
-                log "Curl post es public failed!"
-            fi
+            event_id="r_update"
         else
-            curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
-            if [ $? -ne 0 ] ;then
-                log "Curl post es public failed!"
-            fi
+            event_id="r_install"
+        fi
+
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        if [ $? -ne 0 ] ;then
+            log "Curl post es public failed!"
         fi
     elif [ "$1" == "install_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "restore_backup" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "backup_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"${USER_ID}\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     else
         return 0
-    fi 
+    fi
 }
 
 download()
@@ -141,16 +128,17 @@ download()
         return 3
     fi
 
-    if [ -n "$md5" ]; then
-        local download_md5=`md5sum ${file}`
+    if [ -n "${md5}" ]; then
+        local download_md5=`md5sum ${file} | awk '{print $1}'`
         if [ $? -ne 0 ]; then
             log "Execute md5sum failed!"
             return 4
         fi
 
-        download_md5=`echo ${download_md5} | awk '{print $1}' | tr [a-z] [A-Z]`
+        download_md5=`echo ${download_md5} | tr '[A-Z]' '[a-z]'`
+        local expected_md5=`echo ${md5} | tr '[A-Z]' '[a-z]'`
 
-        if [ "$download_md5" != "$md5" ]; then
+        if [ "${download_md5}" != "${expected_md5}" ]; then
             log "The checksum of ${file} does not match!"
             return 4
         fi
@@ -200,8 +188,8 @@ install_init()
         PLUGIN_DIR="/xunyou"
         PLUGIN_MOUNT_DIR="/"
         IF_NAME="br-lan"
-        VENDOR=`cat /etc/device_info | grep DEVICE_MANUFACTURER |awk -F '"' '{print $2}'`
-        MODEL=`cat /etc/device_info | grep DEVICE_REVISION |awk -F '"' '{print $2}'`
+        VENDOR=`awk -F '=' '$1=="DEVICE_MANUFACTURER" {print $2}' /etc/device_info  | tr -d \'\"`
+        MODEL=`awk -F '=' '$1=="DEVICE_REVISION" {print $2}' /etc/device_info  | tr -d \'\"`
         VERSION=`cat /etc/openwrt_version`
     else
         local hostname=`uname -n`
@@ -239,7 +227,7 @@ install_init()
                 IF_NAME="br0"
                 VENDOR="NETGEAR"
                 MODEL="${model}"
-                VERSION="${version#V*}"     
+                VERSION="${version#V*}"
                 if [ ${MODEL:0:6} == "RAX120" ]; then
                     PLUGIN_DIR="/tmp/data/xunyou"
                 else
@@ -258,25 +246,6 @@ install_init()
         return 2
     fi
 
-    local json
-    local key
-
-    if [ -f ${PLUGIN_DIR}/.cache/bind_info ]; then
-        json=`cat ${PLUGIN_DIR}/.cache/bind_info`
-
-        key="userName"
-        USER_NAME=`get_json_value "${json}" "${key}"`
-        
-        key="userId"
-        USER_ID=`get_json_value "${json}" "${key}"`
-    fi
-
-    json=`curl -s http://router.xunyou.com/index.php/Info/getClientIp` >/dev/null 2>&1
-    if [ -n "${json}" ]; then
-        key="ip"
-        PUBLIC_IP=`get_json_value "${json}" "${key}"`
-    fi
-    
     if [ -f ${PLUGIN_DIR}/version ]; then
         PLUGIN_VERSION=`cat ${PLUGIN_DIR}/version`
     fi
@@ -366,7 +335,12 @@ download_plugin()
 
     while read line;
     do
-        if [ "${line}" == '"name":"common"' ]; then
+        line=`echo ${line} | tr -d ','`
+
+        if [ "${line}" == '"name":"core"' ]; then
+            state="core"
+            continue
+        elif [ "${line}" == '"name":"common"' ]; then
             state="core"
             continue
         elif [ "${line}" == '"name":"libs"' ]; then
@@ -522,8 +496,14 @@ install_plugin()
 
     #检查插件目录所在分区是否有足够的空间
     local require=`du -sk ${DOWNLOAD_DIR} | awk -F" " '{print $1}'`
-    local available=`df -k | awk -F" " '$6=="'${PLUGIN_MOUNT_DIR}'" {print $4}' | sed -n 1p`
 
+    if [ "$SYSTEM_TYPE" == "oray" ]; then
+        local available=`df -m | awk -F" " '$6=="'${PLUGIN_MOUNT_DIR}'" {print $4}' | sed -n 1p | tr -d M`
+        available=$(awk 'BEGIN{print '${available}'*1000 }')
+    else
+        local available=`df -k | awk -F" " '$6=="'${PLUGIN_MOUNT_DIR}'" {print $4}' | sed -n 1p`
+    fi   
+    
     #预留2k的空间保存daemon日志
     let "require = ${require} + 2"
     if [ ${require} -ge ${available} ]; then
@@ -541,12 +521,13 @@ install_plugin()
     #如果是Koolshare梅林固件需要做特殊处理
     if [ "${SYSTEM_TYPE}" == "merlin" ]; then
         dbus set xunyou_enable=1
-        cp -rf ${INSTALL_DIR}/xunyou/webs/Module_xunyou.asp /koolshare/webs/
-        cp -rf ${INSTALL_DIR}/xunyou/res/icon-xunyou.png /koolshare/res/
+        cp -af ${INSTALL_DIR}/xunyou/webs/Module_xunyou.asp /koolshare/webs/
+        cp -af ${INSTALL_DIR}/xunyou/res/icon-xunyou.png /koolshare/res/
+        cp -af ${INSTALL_DIR}/xunyou/webs/get_lan_mac.sh /koolshare/scripts/xunyou_get_lan_mac.sh
 
         ln -sf ${PLUGIN_DIR}/xunyou_uninstall.sh /koolshare/scripts/uninstall_xunyou.sh
         ln -sf ${PLUGIN_DIR}/xunyou_daemon.sh /koolshare/init.d/S90XunYouAcc.sh
-        ln -sf ${PLUGIN_DIR}/xunyou_daemon.sh /koolshare/scripts/xunyou_status.sh
+        ln -sf ${PLUGIN_DIR}/xunyou_daemon.sh /koolshare/scripts/xunyou_status.sh 
 
         local plugin_version=`cat ${PLUGIN_DIR}/version`
 
@@ -576,7 +557,7 @@ start_plugin()
 
     sh ${PLUGIN_DIR}/xunyou_daemon.sh status >> ${INSTALL_LOG}
     if [ $? -ne 0 ]; then
-        log "Plugin's running status is not ok."
+        log "Plugin running status is not ok."
         return 9
     fi
 
