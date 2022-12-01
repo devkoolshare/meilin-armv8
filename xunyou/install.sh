@@ -23,6 +23,7 @@ DOWNLOAD_DIR="${INSTALL_DIR}/download"
 
 PLUGIN_CONF="${WORK_DIR}/conf/plugin.conf"
 INSTALL_JSON="${INSTALL_DIR}/install.json"
+DEV_INFO="${INSTALL_DIR}/dev-info"
 CORE_TAR="${DOWNLOAD_DIR}/xunyou.tar.gz"
 KO_TAR="${DOWNLOAD_DIR}/ko.tar.gz"
 
@@ -196,7 +197,7 @@ install_init()
         if [ "${hostname}" == "XiaoQiang" ]; then
             SYSTEM_TYPE="xiaomi"
             PLUGIN_DIR="/userdisk/appdata/2882303761520108685"
-            PLUGIN_MOUNT_DIR="/data"
+            PLUGIN_MOUNT_DIR="/userdisk"
             IF_NAME="br-lan"
             VENDOR="XIAOMI"
             MODEL=`uci get /usr/share/xiaoqiang/xiaoqiang_version.version.HARDWARE`
@@ -265,12 +266,17 @@ download_install_json()
 {
     log "vendor=${VENDOR}, model=${MODEL}, version=${VERSION}"
 
-    local resp_info_json=`curl -s -k -X POST -H "Content-Type: application/json" -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' "https://router.xunyou.com/index.php/vendor/get-info"` > /dev/null 2>&1
-    if [ $? -ne 0 ] ;then
-        log "Curl get info failed!"
+    curl -L -s -k -X POST -H Content-Type: application/json -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info > ${DEV_INFO} || \
+        wget -qO- --no-check-certificate --post-data '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info -O ${DEV_INFO} >/dev/null 2>&1  || \
+        curl -s -k -X POST -H Content-Type: application/json -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info > ${DEV_INFO}
+
+    if [ $? -ne 0 ]; then
+        log "get dev info failed!"
         return 3
     fi
-
+    
+    local resp_info_json=`cat ${DEV_INFO}`
+  
     #判断网站返回的info信息是否正确
     local key="id"
     local value=`get_json_value "${resp_info_json}" "${key}"`
@@ -323,9 +329,6 @@ download_plugin()
     local kernel
     local kernel_md5
     local kernel_url
-    local libcurl_md5
-    local libcurl_url
-    local libcurl_file
     local libevent_openssl_md5
     local libevent_openssl_url
     local libevent_openssl_file
@@ -394,11 +397,7 @@ download_plugin()
                         download_related_lib=1
                     fi
                 else
-                    if [ "${lib_name}" == "libcurl" ]; then
-                        libcurl_md5="${lib_md5}"
-                        libcurl_url="${lib_url}"
-                        libcurl_file="${lib_file}"
-                    elif [ "${lib_name}" == "libevent_openssl" ]; then
+                    if [ "${lib_name}" == "libevent_openssl" ]; then
                         libevent_openssl_md5="${lib_md5}"
                         libevent_openssl_url="${lib_url}"
                         libevent_openssl_file="${lib_file}"
@@ -436,16 +435,8 @@ download_plugin()
         fi
     done < ${INSTALL_JSON}
 
-    # 因为libcurl和libevent_openssl依赖于libssl编译出来的，为了版本匹配，必须配套使用。所以如果需要下载libssl，则也需要下载libcurl和libevent_openssl。
+    # 因为libevent_openssl依赖于libssl编译出来的，为了版本匹配，必须配套使用。所以如果需要下载libssl，则也需要下载libevent_openssl。
     if [ ${download_related_lib} -eq 1 ]; then
-        if [ -n "${libcurl_md5}" -a -n "${libcurl_url}" -a -n "${libcurl_file}" ]; then
-            download ${libcurl_url} ${libcurl_file} ${libcurl_md5}
-            ret=$?
-            if [ ${ret} -ne 0 ]; then
-                return ${ret}
-            fi
-        fi
-
         if [ -n "${libevent_openssl_md5}" -a -n "${libevent_openssl_url}" -a -n "${libevent_openssl_file}" ]; then
             download ${libevent_openssl_url} ${libevent_openssl_file} ${libevent_openssl_md5}
             ret=$?
@@ -554,7 +545,6 @@ start_plugin()
     fi
 
     sleep 1
-
     sh ${PLUGIN_DIR}/xunyou_daemon.sh status >> ${INSTALL_LOG}
     if [ $? -ne 0 ]; then
         log "Plugin running status is not ok."
