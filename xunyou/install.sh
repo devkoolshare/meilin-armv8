@@ -80,6 +80,7 @@ post_es_log()
     fi
 
     local device_id="${guid}"
+    local hardware_type=`uname -m`
 
     if [ "$1" == "install" ]; then
         local event_id
@@ -89,22 +90,22 @@ post_es_log()
             event_id="r_install"
         fi
 
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${hardware_type}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "install_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${hardware_type}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "restore_backup" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${hardware_type}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "backup_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${hardware_type}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
@@ -265,6 +266,7 @@ install_exit(){
 download_install_json()
 {
     log "vendor=${VENDOR}, model=${MODEL}, version=${VERSION}"
+    local url
 
     curl -L -s -k -X POST -H Content-Type: application/json -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info > ${DEV_INFO} || \
         wget -qO- --no-check-certificate --post-data '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info -O ${DEV_INFO} >/dev/null 2>&1  || \
@@ -287,19 +289,31 @@ download_install_json()
     fi
 
     if [ ${value} -ne 1 ];then
-        log "The id is error: ${value}!"
-        return 5
-    fi
+            if [ "${SYSTEM_TYPE}" == "merlin"  -o "${SYSTEM_TYPE}" == "asus" ]; then
+                local arm=$(cat /proc/cpuinfo | grep "CPU architecture" | cut -d' ' -f3 | head -n1)
+                if [ "${arm}" == "7" ];then
+                    url="https://partnerdownload.xunyou.com/routeplugin/merlin/arm-7/386/install.json"
+                elif [ "${arm}" == "8" ];then
+                    url="https://partnerdownload.xunyou.com/routeplugin/merlin/arm-8/386/install.json"
+                else
+                    log "decive type not arm7/arm8"
+                    return 1
+                fi
+            else
+                log "The id is error: ${value}!"
+                return 5
+            fi
+    else
+        #获取install.json的下载路径
+        key="url"
+        value=`get_json_value "${resp_info_json}" "${key}"`
+        if [ -z "${value}" ];then
+            log "Can't find the install json's url!"
+            return 5
+        fi
 
-    #获取install.json的下载路径
-    key="url"
-    value=`get_json_value "${resp_info_json}" "${key}"`
-    if [ -z "${value}" ];then
-        log "Can't find the install json's url!"
-        return 5
+        url=`echo ${value} | sed 's/\\\\//g'`
     fi
-
-    local url=`echo ${value} | sed 's/\\\\//g'`
 
     download ${url} ${INSTALL_JSON}
     ret=$?
