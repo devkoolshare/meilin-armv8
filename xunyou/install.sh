@@ -12,9 +12,11 @@ MODEL=""
 VERSION=""
 PLUGIN_VERSION=""
 IF_MAC=""
-PLUGIN_MOUNT_DIR=“”
+PLUGIN_MOUNT_DIR=""
 PLUGIN_CONF=""
 PLUGIN_VERSION=""
+HARDWARE_TYPE=""
+CPU_TYPE=""
 
 WORK_DIR="/tmp/xunyou"
 INSTALL_DIR="/tmp/.xunyou_install"
@@ -89,22 +91,22 @@ post_es_log()
             event_id="r_install"
         fi
 
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "install_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "restore_backup" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "backup_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\" }" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
@@ -252,6 +254,11 @@ install_init()
     fi
 
     log "SYSTEM_TYPE=${SYSTEM_TYPE}"
+    
+    HARDWARE_TYPE=$(uname -m)
+    if [ "${SYSTEM_TYPE}" == "merlin"  -o "${SYSTEM_TYPE}" == "asus" ]; then
+        CPU_TYPE=$(cat /proc/cpuinfo | grep "CPU architecture" | cut -d' ' -f3 | head -n1)
+    fi
 
     return 0
 }
@@ -265,6 +272,7 @@ install_exit(){
 download_install_json()
 {
     log "vendor=${VENDOR}, model=${MODEL}, version=${VERSION}"
+    local url
 
     curl -L -s -k -X POST -H Content-Type: application/json -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info > ${DEV_INFO} || \
         wget -qO- --no-check-certificate --post-data '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info -O ${DEV_INFO} >/dev/null 2>&1  || \
@@ -287,19 +295,30 @@ download_install_json()
     fi
 
     if [ ${value} -ne 1 ];then
-        log "The id is error: ${value}!"
-        return 5
-    fi
+            if [ "${SYSTEM_TYPE}" == "merlin"  -o "${SYSTEM_TYPE}" == "asus" ]; then
+                if [ "${CPU_TYPE}" == "7" ];then
+                    url="https://partnerdownload.xunyou.com/routeplugin/merlin/arm-7/386/install.json"
+                elif [ "${CPU_TYPE}" == "8" ];then
+                    url="https://partnerdownload.xunyou.com/routeplugin/merlin/arm-8/386/install.json"
+                else
+                    log "decive type not arm7/arm8"
+                    return 1
+                fi
+            else
+                log "The id is error: ${value}!"
+                return 5
+            fi
+    else
+        #获取install.json的下载路径
+        key="url"
+        value=`get_json_value "${resp_info_json}" "${key}"`
+        if [ -z "${value}" ];then
+            log "Can't find the install json's url!"
+            return 5
+        fi
 
-    #获取install.json的下载路径
-    key="url"
-    value=`get_json_value "${resp_info_json}" "${key}"`
-    if [ -z "${value}" ];then
-        log "Can't find the install json's url!"
-        return 5
+        url=`echo ${value} | sed 's/\\\\//g'`
     fi
-
-    local url=`echo ${value} | sed 's/\\\\//g'`
 
     download ${url} ${INSTALL_JSON}
     ret=$?
@@ -461,7 +480,7 @@ uninstall_plugin()
         rm -rf ${WORK_DIR} ${PLUGIN_DIR}
     fi
 
-    log "Uninstall plugin success."
+    #log "Uninstall plugin success."
 
     return 0
 }
@@ -544,7 +563,7 @@ start_plugin()
         return 9
     fi
 
-    sleep 1
+    sleep 2
     sh ${PLUGIN_DIR}/xunyou_daemon.sh status >> ${INSTALL_LOG}
     if [ $? -ne 0 ]; then
         log "Plugin running status is not ok."
