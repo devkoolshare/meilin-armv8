@@ -170,6 +170,9 @@ install_init()
         VENDOR=`nvram get wps_mfstring`
         MODEL=`nvram get productid`
         VERSION=`nvram get buildno`
+        if [ -z "$VERSION" ]; then
+            VERSION="386"
+        fi
     elif [ -d "/jffs" ]; then
         SYSTEM_TYPE="asus"
         PLUGIN_DIR="/jffs/xunyou"
@@ -178,6 +181,9 @@ install_init()
         VENDOR=`nvram get wps_mfstring`
         MODEL=`nvram get productid`
         VERSION=`nvram get buildno`
+        if [ -z "$VERSION" ]; then
+            VERSION="386"
+        fi
     elif [ -d "/var/tmp/misc2" ]; then
         SYSTEM_TYPE="linksys"
         PLUGIN_DIR="/var/tmp/misc2/xunyou"
@@ -567,7 +573,7 @@ start_plugin()
     sh ${PLUGIN_DIR}/xunyou_daemon.sh status >> ${INSTALL_LOG}
     if [ $? -ne 0 ]; then
         log "Plugin running status is not ok."
-        return 9
+        return 10
     fi
 
     return 0
