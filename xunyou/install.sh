@@ -84,29 +84,23 @@ post_es_log()
     local device_id="${guid}"
 
     if [ "$1" == "install" ]; then
-        local event_id
-        if [ "${ACTION}" == "upgrade" ]; then
-            event_id="r_update"
-        else
-            event_id="r_install"
-        fi
-
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        event_id="r_install"
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "install_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "restore_backup" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "backup_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
@@ -143,7 +137,7 @@ download()
 
         if [ "${download_md5}" != "${expected_md5}" ]; then
             log "The checksum of ${file} does not match!"
-            return 4
+            return 11
         fi
     fi
 
@@ -479,9 +473,9 @@ download_plugin()
 uninstall_plugin()
 {
     if [ -f ${PLUGIN_DIR}/uninstall.sh ]; then
-        sh ${PLUGIN_DIR}/uninstall.sh upgrade > /dev/null 2>&1
+        sh ${PLUGIN_DIR}/uninstall.sh > /dev/null 2>&1
     elif [ -f ${PLUGIN_DIR}/xunyou_uninstall.sh ]; then
-        sh ${PLUGIN_DIR}/xunyou_uninstall.sh silent > /dev/null 2>&1
+        sh ${PLUGIN_DIR}/xunyou_uninstall.sh > /dev/null 2>&1
     else
         rm -rf ${WORK_DIR} ${PLUGIN_DIR}
     fi
@@ -539,6 +533,8 @@ install_plugin()
         dbus set xunyou_enable=1
         cp -af ${INSTALL_DIR}/xunyou/webs/Module_xunyou.asp /koolshare/webs/
         cp -af ${INSTALL_DIR}/xunyou/res/icon-xunyou.png /koolshare/res/
+        
+        chmod +x ${INSTALL_DIR}/xunyou/webs/get_lan_mac.sh
         cp -af ${INSTALL_DIR}/xunyou/webs/get_lan_mac.sh /koolshare/scripts/xunyou_get_lan_mac.sh
 
         ln -sf ${PLUGIN_DIR}/xunyou_uninstall.sh /koolshare/scripts/uninstall_xunyou.sh
