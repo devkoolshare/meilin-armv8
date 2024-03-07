@@ -2,7 +2,8 @@
 
 [ -f /etc/profile ] && . /etc/profile >/dev/null
 
-ACTION=$1
+INSTALL_ROUTER="${1}"
+INSTALL_MODEL="${2}"
 
 SYSTEM_TYPE=""
 PLUGIN_DIR=""
@@ -32,6 +33,7 @@ KO_TAR="${DOWNLOAD_DIR}/ko.tar.gz"
 OLD_VERSION=""
 OLD_TITLE=""
 
+OPENWRT="openwrt"
 INSTALL_LOG="/tmp/.xunyou_install.log"
 
 #返回码说明
@@ -144,6 +146,84 @@ download()
     return 0
 }
 
+get_architecture()
+{
+    arm=$(echo "${MODEL}" | grep "arm")
+    if [ "" != "${arm}" ];then
+        MODEL="arm32"
+        return 0
+    fi
+
+    aarch64=$(echo "${MODEL}" | grep "aarch64")
+    if [ "" != "${aarch64}" ];then
+        MODEL="arm64"
+        return 0
+    fi
+
+    mips=$(echo "${MODEL}" | grep "mips")
+    if [ "" != "${mips}" ];then
+        MODEL="mips"
+        return 0
+    fi
+
+    x86_64=$(echo "${MODEL}" | grep "x86_64")
+    if [ "" != "${x86_64}" ];then
+        MODEL="x86"
+        return 0
+    fi
+    return 1
+}
+
+get_mount_point() 
+{
+    [ $# -ne 1 ] && return 1
+
+    local mount_point=$1
+    while true
+    do
+        if [ "$mount_point" = "/" ]
+        then
+            break
+        fi
+
+        if [ ! -z "$(df -k | grep -m 1 -E "[ \t]+$mount_point[ \t]*$" | grep -v 'grep')" ]
+        then
+            break
+        fi
+
+        mount_point=$(dirname $mount_point)
+    done
+    echo $mount_point
+    return 0
+}
+
+install_init_with_param() 
+{
+    local router="${INSTALL_ROUTER}"
+
+    case "${router}" in
+    ${OPENWRT})
+        mkdir -p ${INSTALL_DIR}
+        mkdir -p ${DOWNLOAD_DIR}
+        SYSTEM_TYPE="openwrt"
+        PLUGIN_DIR="/xunyou"
+        IF_NAME="br-lan"
+        VENDOR="OPENWRT"
+        MODEL="${INSTALL_MODEL}"
+        VERSION="1.0"
+        get_architecture
+        ;;
+    *)
+        return 1
+        ;;
+    esac 
+    
+    PLUGIN_MOUNT_DIR=$(get_mount_point "${PLUGIN_DIR}") || return 1
+    echo "PLUGIN_MOUNT_DIR:${PLUGIN_MOUNT_DIR}"
+    [ ! -d "${PLUGIN_MOUNT_DIR}" ] && return 1
+    return 0
+}
+
 install_init()
 {
     local library_path=`echo ${LD_LIBRARY_PATH} | sed "s#${WORK_DIR}/lib:##g"`
@@ -233,6 +313,7 @@ install_init()
                 VERSION="${version#V*}"
                 if [ ${MODEL:0:6} == "RAX120" ]; then
                     PLUGIN_DIR="/tmp/data/xunyou"
+                    PLUGIN_MOUNT_DIR="/tmp/data"
                 else
                     PLUGIN_DIR="/data/xunyou"
                 fi
@@ -487,9 +568,10 @@ uninstall_plugin()
 
 install_plugin()
 {
-    #解压缩插件包到INSTALL目录，从中拷贝version、xunyou_daemon.sh、xunyou_firewall.sh、xunyou_uninstall.sh和xunyou_post文件到DOWNLOAD目录
+    #解压缩插件包到INSTALL目录，从中拷贝version、xunyou_daemon.sh、xunyou_firewall.sh、xunyou_uninstall.sh和xunyou.conf文件到DOWNLOAD目录
     tar -C ${INSTALL_DIR} -xzf ${CORE_TAR}
 
+    cp -af ${INSTALL_DIR}/xunyou/conf/xunyou.conf ${DOWNLOAD_DIR} > /dev/null 2>&1
     cp -af ${INSTALL_DIR}/xunyou/version ${DOWNLOAD_DIR}
     cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_daemon.sh ${DOWNLOAD_DIR}
     cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_firewall.sh ${DOWNLOAD_DIR}/firewall.sh
@@ -565,7 +647,7 @@ start_plugin()
         return 9
     fi
 
-    sleep 2
+    sleep 1
     sh ${PLUGIN_DIR}/xunyou_daemon.sh status >> ${INSTALL_LOG}
     if [ $? -ne 0 ]; then
         log "Plugin running status is not ok."
@@ -573,6 +655,51 @@ start_plugin()
     fi
 
     return 0
+}
+
+config_bootup_implemention() 
+{
+    local init_script="${PLUGIN_DIR}/S99xyplugin"
+    local link_script="/etc/rc.d/S99xyplugin"
+
+    {
+        echo "#!/bin/sh /etc/rc.common";
+        echo "";
+        echo "";
+        echo "START=99";
+        echo "start() {"
+        echo "    /bin/sh ${PLUGIN_DIR}/xunyou_daemon.sh start &";
+        echo "}"
+    } > "${init_script}"
+
+    [ "$?" != "0" ] && return 1
+    [ ! -f "${init_script}" ] && return 1
+    chmod u+x ${init_script}
+
+    ln -sf ${init_script} ${link_script}
+    if [ "$?" != "0" ];then
+        [ -f "${init_script}" ] && rm ${init_script}
+        return 1
+    fi
+    return 0
+}
+
+config_openwrt_bootup() {
+    config_bootup_implemention
+    return $?
+}
+
+config_bootup() 
+{
+    case "${SYSTEM_TYPE}" in
+    "openwrt")
+        config_openwrt_bootup
+        return $?
+        ;;
+    *)
+        return 0
+        ;;
+    esac
 }
 
 set_xunyou_bak()
@@ -650,12 +777,17 @@ restore_xunyou_bak()
     return 0
 }
 
-install_init
-ret=$?
-if [ ${ret} -ne 0 ];then
-    post_es_log install fail ${ret}
-    install_exit
-    exit ${ret}
+if [ "${INSTALL_ROUTER}" != "upgrade" ] && [ -n "${INSTALL_ROUTER}" ]; then
+    install_init_with_param
+    [ "$?" != "0" ] && exit 1
+else
+    install_init
+    ret=$?
+    if [ ${ret} -ne 0 ];then
+        post_es_log install fail ${ret}
+        install_exit
+        exit ${ret}
+    fi
 fi
 
 download_install_json
@@ -714,6 +846,14 @@ if [ ${ret} -ne 0 ]; then
     restore_xunyou_bak
     post_es_log restore_backup success
     post_es_log backup_start success
+    install_exit
+    exit ${ret}
+fi
+
+config_bootup
+ret=$?
+if [ ${ret} -ne 0 ];then
+    restore_xunyou_bak
     install_exit
     exit ${ret}
 fi
