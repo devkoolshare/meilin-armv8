@@ -4,6 +4,8 @@
 
 INSTALL_ROUTER="${1}"
 INSTALL_MODEL="${2}"
+ACTION3="${3}"
+ACTION4="${4}"
 
 SYSTEM_TYPE=""
 PLUGIN_DIR=""
@@ -33,7 +35,10 @@ KO_TAR="${DOWNLOAD_DIR}/ko.tar.gz"
 OLD_VERSION=""
 OLD_TITLE=""
 
+CURL_CMD=""
+
 OPENWRT="openwrt"
+ASUS_MERLIN="merlin"
 INSTALL_LOG="/tmp/.xunyou_install.log"
 
 #返回码说明
@@ -64,8 +69,10 @@ log()
 }
 
 post_es_log()
-{
-    #local time=`date +"%Y-%m-%d %H:%M:%S"`
+{   
+    if [ -z "$CURL_CMD" ]; then
+        return 0;
+    fi
 
     if [ -f ${PLUGIN_DIR}/version ]; then
         PLUGIN_VERSION=`cat ${PLUGIN_DIR}/version`
@@ -213,14 +220,43 @@ install_init_with_param()
         VERSION="1.0"
         get_architecture
         ;;
+
+    ${ASUS_MERLIN})
+        SYSTEM_TYPE="merlin"
+        PLUGIN_DIR="/koolshare/xunyou"
+        PLUGIN_MOUNT_DIR="/jffs"
+        IF_NAME="br0"
+        VENDOR=`nvram get wps_mfstring`
+        MODEL=`nvram get productid`
+        VERSION=`nvram get buildno`
+        if [ -z "$VERSION" ]; then
+            VERSION="386"
+        fi
+        ;;
+
     *)
         return 1
         ;;
     esac 
     
+    if [ "${ACTION3}" == "-i" ]; then
+        [ -n "${ACTION4}" ] && IF_NAME=${ACTION4}
+    fi
+
     PLUGIN_MOUNT_DIR=$(get_mount_point "${PLUGIN_DIR}") || return 1
     echo "PLUGIN_MOUNT_DIR:${PLUGIN_MOUNT_DIR}"
     [ ! -d "${PLUGIN_MOUNT_DIR}" ] && return 1
+    
+    IF_MAC=`ip address show ${IF_NAME} | grep link/ether | awk -F ' ' '{print $2}' | tr '[A-Z]' '[a-z]'`
+    if [ -z "${IF_MAC}" ]; then
+        log "Can't find the lan mac!"
+        return 2
+    fi
+
+    if [ -f ${PLUGIN_DIR}/version ]; then
+        PLUGIN_VERSION=`cat ${PLUGIN_DIR}/version`
+    fi
+
     return 0
 }
 
@@ -355,9 +391,9 @@ download_install_json()
     log "vendor=${VENDOR}, model=${MODEL}, version=${VERSION}"
     local url
 
-    curl -L -s -k -X POST -H Content-Type: application/json -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info > ${DEV_INFO} || \
+    curl -L -s -k -X POST -H 'Content-Type: application/json' -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info -o ${DEV_INFO} >/dev/null 2>&1  || \
         wget -qO- --no-check-certificate --post-data '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info -O ${DEV_INFO} >/dev/null 2>&1  || \
-        curl -s -k -X POST -H Content-Type: application/json -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info > ${DEV_INFO}
+        curl -s -k -X POST -H 'Content-Type: application/json' -d '{"alias":"'"${VENDOR}"'","model":"'"${MODEL}"'","version":"'"${VERSION}"'"}' https://router.xunyou.com/index.php/vendor/get-info -o ${DEV_INFO} >/dev/null 2>&1
 
     if [ $? -ne 0 ]; then
         log "get dev info failed!"
@@ -576,6 +612,15 @@ install_plugin()
     cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_daemon.sh ${DOWNLOAD_DIR}
     cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_firewall.sh ${DOWNLOAD_DIR}/firewall.sh
     cp -af ${INSTALL_DIR}/xunyou/scripts/xunyou_uninstall.sh ${DOWNLOAD_DIR}
+    
+    if [ "${ACTION3}" == "-i" ]; then
+        LAN_IF_NAME=${ACTION4}
+        {
+            echo "lan_if_name=${LAN_IF_NAME}";
+        } > "${DOWNLOAD_DIR}/lan.config"
+    else
+        echo "" > "${DOWNLOAD_DIR}/lan.config"
+    fi
 
     #为兼容老版本，拷贝xunyou_daemon.sh到xunyou_config.sh
     mkdir -p ${DOWNLOAD_DIR}/scripts
@@ -728,7 +773,7 @@ set_xunyou_bak()
 
 restore_xunyou_bak()
 {
-    uninstall_plugin upgrade
+    uninstall_plugin
 
     if [ -d "${BACKUP_DIR}" ]; then
         rm -rf ${PLUGIN_DIR}
@@ -776,6 +821,8 @@ restore_xunyou_bak()
 
     return 0
 }
+
+CURL_CMD=`type -p curl`
 
 if [ "${INSTALL_ROUTER}" != "upgrade" ] && [ -n "${INSTALL_ROUTER}" ]; then
     install_init_with_param
