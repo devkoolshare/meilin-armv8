@@ -79,10 +79,6 @@ post_es_log()
     fi
 
     local guid=`echo -n ''${IF_MAC}'merlinrouterxunyou2020!@#$' | md5sum | awk -F ' ' '{print $1}'`
-    curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\",\"cookie_id\":\"${guid}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/public-properties >/dev/null 2>&1
-    if [ $? -ne 0 ] ;then
-        log "Curl post es public failed!"
-    fi
 
     if [ "$2" == "fail" ]; then
         local error_code="$3"
@@ -94,22 +90,22 @@ post_es_log()
 
     if [ "$1" == "install" ]; then
         event_id="r_install"
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"${event_id}\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" http://open-data-router-api.wyjsq.com:29200/v1/xunyou_event_track >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "install_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_after_install\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" http://open-data-router-api.wyjsq.com:29200/v1/xunyou_event_track >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "restore_backup" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_restore_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" http://open-data-router-api.wyjsq.com:29200/v1/xunyou_event_track >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
     elif [ "$1" == "backup_start" ]; then
-        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" https://ms.xunyou.com/api/statistics/event >/dev/null 2>&1
+        curl -s -m 20 --connect-timeout 10 --retry 3 -k -X POST -d "{\"uid\":\"0\", \"cookie_id\": \"${guid}\", \"device_vendors\":\"${VENDOR}\", \"device_model\":\"${MODEL}\", \"device_version\":\"${VERSION}\", \"device_type\":4, \"device_id\":\"${device_id}\", \"version_id\":\"${PLUGIN_VERSION}\", \"x_event_id\":\"r_launch_backup\", \"x_feature\":\"$2\", \"x_content\":\"${error_code}\", \"hardware_type\":\"${HARDWARE_TYPE}\", \"cpu_type\":\"${CPU_TYPE}\", \"system_type\":\"${SYSTEM_TYPE}\", \"lan_mac\":\"${IF_MAC}\"}" --header "Content-type: application/json" http://open-data-router-api.wyjsq.com:29200/v1/xunyou_event_track >/dev/null 2>&1
         if [ $? -ne 0 ] ;then
             log "Curl post es public failed!"
         fi
